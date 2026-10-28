@@ -488,3 +488,29 @@ struct FloatingPill: View {
         .onHover { hovering in withAnimation(Motion.snappy) { self.hovering = hovering } }
     }
 }
+
+private struct CollapsibleHeight: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// Content that opens and closes by animating its own measured height, so the card around it grows with the content and
+/// the content never shows outside the card (an `if` with a transition lays the content out at its final place at once,
+/// while the card is still on its way).
+struct Collapsible<Content: View>: View {
+    let open: Bool
+    @ViewBuilder let content: Content
+    @State private var height: CGFloat = 0
+
+    var body: some View {
+        content
+            .fixedSize(horizontal: false, vertical: true)
+            .background(GeometryReader { Color.clear.preference(key: CollapsibleHeight.self, value: $0.size.height) })
+            .onPreferenceChange(CollapsibleHeight.self) { height = $0 }
+            .frame(height: open ? height : 0, alignment: .top)
+            .clipped()
+            .opacity(open ? 1 : 0)
+            .allowsHitTesting(open)
+            .accessibilityHidden(!open)
+    }
+}

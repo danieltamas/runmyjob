@@ -9,16 +9,17 @@ struct RoutingTab: View {
     @State private var answer: RouteDecision?
     @State private var asking = false
     @State private var testing = false
+    @State private var showLabels = false
 
     var body: some View {
         if let routing = model.snapshot.routing {
             VStack(alignment: .leading, spacing: 10) {
-                deny(routing)
                 if let problem = routing.problem { self.problem(problem) } else {
-                    rulesCard(routing)
                     explain(routing)
+                    rulesCard(routing)
                     labelsCard(routing)
                 }
+                deny(routing)
             }
             .onAppear { prefill(routing) }
             .onChange(of: model.explain?.command) { _, _ in jump() }
@@ -47,10 +48,10 @@ struct RoutingTab: View {
     /// A dry run of the rules: closed it is one line, open it takes a repo and a command and says which rule catches
     /// them and where the job would go. Nothing runs.
     private func explain(_ routing: RoutingPresentation) -> some View {
-        HoverCard(accent: nil, action: testing ? nil : { withAnimation(Motion.spring) { testing = true } }) {
+        HoverCard(accent: Theme.ok, action: testing ? nil : { withAnimation(Motion.spring) { testing = true } }) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle").font(.system(size: 13)).foregroundStyle(Theme.textSecondary)
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 15)).foregroundStyle(Theme.ok)
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Test your rules").font(.rowTitle).foregroundStyle(Theme.textPrimary)
                         Text("Check which rule catches a repo and where its build would run. Nothing is run.")
@@ -166,11 +167,19 @@ struct RoutingTab: View {
 
     private func labelsCard(_ routing: RoutingPresentation) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Eyebrow(text: "GitHub label mapping").padding(.leading, 4).padding(.top, 4)
-            if routing.labels.isEmpty {
+            Button { withAnimation(Motion.spring) { showLabels.toggle() } } label: {
+                HStack(spacing: 6) {
+                    Eyebrow(text: "GitHub workflows seen (\(routing.labels.count))")
+                    Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).foregroundStyle(Theme.textTertiary).rotationEffect(.degrees(showLabels ? 90 : 0))
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).padding(.leading, 4).padding(.top, 4)
+            if showLabels, routing.labels.isEmpty {
                 Text("Workflows appear here once the GitHub poller has seen their jobs.").font(.meta).foregroundStyle(Theme.textTertiary).padding(.leading, 4)
             }
-            ForEach(routing.labels, id: \.workflow) { line in
+            ForEach(showLabels ? routing.labels : [], id: \.workflow) { line in
                 HoverCard(accent: line.mismatch ? Theme.warn : nil, action: nil) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(line.repo).font(.rowTitle).foregroundStyle(Theme.textPrimary).fixedSize(horizontal: false, vertical: true)

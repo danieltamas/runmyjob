@@ -79,7 +79,7 @@ extension JobRowPresentation.Agent {
     }
 }
 
-/// One job: two lines and a meta line (docs/DESIGN.md, Jobs). Log and Rerun sit in the row of a failed job.
+/// One job: who and where, what ran, how it went (docs/DESIGN.md, Jobs). Log and Rerun sit in the row of a failed job.
 struct JobRowView: View {
     let row: JobRowPresentation
     let expanded: Bool
@@ -88,14 +88,13 @@ struct JobRowView: View {
 
     var body: some View {
         HoverCard(accent: Theme.color(row.stateChip.tone), action: toggle) {
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 8) {
                 titleLine
-                detailLine
-                Text(row.command).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.textSecondary)
-                    .lineLimit(expanded ? 4 : 1).truncationMode(.middle).help(row.command)
-                metaLine
+                contextLine
+                commandWell
+                footer
                 if !row.actions.isEmpty { actions }
-                if expanded { Expansion(row: row, model: model) }
+                Collapsible(open: expanded) { Expansion(row: row, model: model).padding(.top, 2) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -108,23 +107,58 @@ struct JobRowView: View {
                 .frame(maxWidth: .infinity, alignment: .leading).layoutPriority(1)
             Chip(text: row.location.text, symbol: row.locationKind == .local ? "laptopcomputer" : nil,
                  color: row.locationKind == .local ? Theme.local : Theme.tenant(row.tenant))
-            // A GitHub row already says "github" in its location chip.
-            if row.agent != .github {
-                Image(systemName: row.agent.symbol).font(.system(size: 10.5)).foregroundStyle(Theme.textTertiary)
-                    .frame(width: 14, height: 18).help(row.agent.title)
-            }
             Chip(text: row.stateChip.text, color: Theme.color(row.stateChip.tone), style: row.state == .running ? .filled : .tinted)
         }
     }
 
-    private var detailLine: some View {
-        HStack(spacing: 6) {
-            if let branch = row.branch { Text(branch).lineLimit(1).truncationMode(.middle) }
-            if let worktree = row.worktree { Text(worktree).lineLimit(1).truncationMode(.middle) }
-            if let commit = row.commit { Text(commit).font(.system(size: 11, design: .monospaced)) }
+    /// Branch, checkout, commit and who started it, each with its glyph.
+    private var contextLine: some View {
+        HStack(spacing: 10) {
+            if let branch = row.branch { glyph("arrow.triangle.branch", branch) }
+            if let worktree = row.worktree { glyph("folder", worktree) }
+            if let commit = row.commit {
+                Text(commit).font(.system(size: 10.5, design: .monospaced)).padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(Theme.wash.opacity(0.08), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            }
             if row.dirty { Circle().fill(Theme.warn).frame(width: 5, height: 5).help("uncommitted changes") }
+            Spacer(minLength: 0)
+            if row.agent != .github {
+                HStack(spacing: 3) {
+                    Image(systemName: row.agent.symbol).font(.system(size: 10))
+                    Text(row.agent.title).lineLimit(1)
+                }
+            }
         }
-        .font(.meta).foregroundStyle(Theme.textTertiary)
+        .font(.meta).foregroundStyle(Theme.textTertiary).lineLimit(1)
+    }
+
+    private func glyph(_ symbol: String, _ text: String) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: symbol).font(.system(size: 9.5))
+            Text(text).lineLimit(1).truncationMode(.middle)
+        }
+        .layoutPriority(-1)
+    }
+
+    /// The command in a recessed well, as it was typed.
+    private var commandWell: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text("$").foregroundStyle(Theme.teal.opacity(0.8))
+            Text(row.command).foregroundStyle(Theme.textSecondary)
+                .lineLimit(expanded ? 6 : 1).truncationMode(.middle).help(row.command)
+        }
+        .font(.system(size: 11, design: .monospaced))
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.canvas.opacity(0.55), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+    }
+
+    /// How it is going or how it went; a run on this Mac adds its processor and memory.
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            metaLine
+            if let load = row.load { LoadGauges(load: load) }
+        }
     }
 
     private var metaLine: some View {
@@ -156,7 +190,10 @@ private struct Expansion: View {
         VStack(alignment: .leading, spacing: 6) {
             Rectangle().fill(Theme.hairline).frame(height: 0.5).padding(.vertical, 2)
             timeline
-            ForEach(row.detail.timestamps, id: \.self) { Text($0).font(.system(size: 10.5).monospacedDigit()).foregroundStyle(Theme.textTertiary) }
+            ForEach(row.detail.timestamps, id: \.self) { stamp in
+                let parts = stamp.split(separator: " ", maxSplits: 1).map(String.init)
+                fact(parts.first ?? "", parts.dropFirst().first ?? "")
+            }
             if let rule = row.detail.rule { fact("rule", rule) }
             if let reason = row.detail.reason, !row.meta.contains(where: { $0.text == "local: \(reason)" }) { fact("fallback", reason) }
             if let session = row.detail.session { fact("session", session) }
@@ -191,7 +228,7 @@ private struct Expansion: View {
 
     private func fact(_ label: String, _ value: String) -> some View {
         HStack(alignment: .top, spacing: 6) {
-            Text(label).foregroundStyle(Theme.textTertiary)
+            Text(label).foregroundStyle(Theme.textTertiary).frame(width: 58, alignment: .leading)
             Text(value).foregroundStyle(Theme.textSecondary).textSelection(.enabled)
         }
         .font(.system(size: 10.5)).fixedSize(horizontal: false, vertical: true)
@@ -237,7 +274,7 @@ enum JobActions {
         switch action {
         case .log:
             let url = RMJHome().url.appendingPathComponent("logs/\(row.id).log")
-            if FileManager.default.fileExists(atPath: url.path) { NSWorkspace.shared.open(url) } else if row.detail.isGitHub {
+            if let archived = LogTail.archived(jobID: row.id, home: RMJHome()) { NSWorkspace.shared.open(archived) } else if row.detail.isGitHub {
                 model.say("Fetching the log of \(row.title) from GitHub...")
                 Task {
                     let problem = await GitHubCommand.fetchLog(row.id)
@@ -268,5 +305,36 @@ enum JobActions {
     @MainActor static func explain(_ row: JobRowPresentation, model: PanelModel) {
         model.explain = (row.title, row.command)
         model.select(.routing)
+    }
+}
+
+/// Processor (percent of one core) and resident memory of a running job on this Mac, each with a thin bar.
+private struct LoadGauges: View {
+    let load: JobLoad
+    private static let cores = Double(ProcessInfo.processInfo.activeProcessorCount)
+    private static let memory = Double(ProcessInfo.processInfo.physicalMemory)
+
+    var body: some View {
+        HStack(spacing: 14) {
+            gauge("CPU", "\(Int(load.cpuPercent.rounded()))%", fraction: load.cpuPercent / (100 * Self.cores))
+            gauge("MEM", ByteCountFormatter.string(fromByteCount: load.memoryBytes, countStyle: .memory), fraction: Double(load.memoryBytes) / Self.memory)
+        }
+    }
+
+    private func gauge(_ label: String, _ value: String, fraction: Double) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 5) {
+                Text(label).foregroundStyle(Theme.textTertiary)
+                Text(value).foregroundStyle(Theme.textPrimary).monospacedDigit()
+            }
+            .font(.system(size: 10.5, weight: .medium))
+            Capsule().fill(Theme.wash.opacity(0.10)).frame(height: 3)
+                .overlay(alignment: .leading) {
+                    GeometryReader { proxy in
+                        Capsule().fill(Theme.running).frame(width: max(3, proxy.size.width * min(1, max(0, fraction))))
+                    }
+                }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

@@ -10,9 +10,23 @@ struct TokensSheet: View {
     @State private var entered: [String: String] = [:]
     @State private var problem: String?
     @State private var saved = false
+    @State private var newTarget = ""
 
     var body: some View {
         ModalFrame(title: "Tokens for \(name)", detail: "GitHub tokens that register the runners. They are stored in your Keychain, never in a file.", content: {
+            FieldBlock(title: "Repos and organizations", detail: "Runners register for these. Use owner/repo or org:Name. Each GitHub owner gets one token below.") {
+                HStack(spacing: 8) {
+                    GlassField(placeholder: "owner/repo or org:Name", text: $newTarget)
+                    ChipButton(title: "Add", action: addTarget)
+                }
+                ForEach(groups.flatMap(\.targets), id: \.self) { target in
+                    HStack {
+                        Text(target).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.textSecondary)
+                        Spacer()
+                        ChipButton(title: "Remove") { removeTarget(target) }
+                    }
+                }
+            }
             if groups.isEmpty { Text("This destination has no runner targets.").font(.meta).foregroundStyle(Theme.textSecondary) }
             ForEach(groups, id: \.owner) { group in
                 FieldBlock(title: group.owner, detail: group.targets.joined(separator: ", ") + (group.stored ? "  -  stored" : "  -  missing")) {
@@ -51,5 +65,25 @@ struct TokensSheet: View {
         entered = [:]
         saved = true
         load()
+    }
+
+    private func addTarget() {
+        let target = newTarget.trimmingCharacters(in: .whitespaces)
+        guard !target.isEmpty else { return }
+        edit { $0.append(target) }
+        newTarget = ""
+    }
+
+    private func removeTarget(_ target: String) { edit { $0.removeAll { $0 == target } } }
+
+    /// Rewrites this destination's `runner_targets` in rules.json; the rules validator refuses a target outside the tenant.
+    private func edit(_ change: (inout [String]) -> Void) {
+        let store = RulesStore(home: RMJHome())
+        guard case .valid(var rules, let fingerprint) = store.load(), var destination = rules.destinations[name] else { return }
+        var targets = destination.runnerTargets ?? []
+        change(&targets)
+        destination.runnerTargets = Array(Set(targets)).sorted()
+        rules.destinations[name] = destination
+        do { try store.save(rules, expected: fingerprint); problem = nil; saved = false; load() } catch { problem = "Could not update the targets: \(error)" }
     }
 }

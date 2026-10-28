@@ -5,7 +5,7 @@ import Foundation
 /// log and removes the file when it settles the row. A row still open whose client is gone (killed, crashed, the Mac
 /// restarted) is found by `isGone` and settled by the reconciler.
 public enum LocalClient {
-    static func file(_ id: String, in directory: URL) -> URL { directory.appendingPathComponent("\(id).client") }
+    public static func file(_ id: String, in directory: URL) -> URL { directory.appendingPathComponent("\(id).client") }
 
     static func record(_ id: String, in directory: URL) {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

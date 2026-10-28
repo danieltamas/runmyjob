@@ -54,6 +54,8 @@ public struct JobRowPresentation: Sendable, Equatable {
     public let detail: Detail
     /// The day the row belongs to in the recent groups.
     public let settledAt: Date?
+    /// Processor and memory of a run on this Mac while it runs; nil for a box or a GitHub job.
+    public let load: JobLoad?
 
     /// What the opened row adds (docs/DESIGN.md, Jobs, Expanded row).
     public struct Detail: Sendable, Equatable {
@@ -98,7 +100,7 @@ public struct JobRowPresentation: Sendable, Equatable {
         }
     }
 
-    public init(_ job: JobRecord, now: Date, lastOutputAt: Date? = nil, waitingFor: String? = nil,
+    public init(_ job: JobRecord, now: Date, lastOutputAt: Date? = nil, waitingFor: String? = nil, load: JobLoad? = nil,
                 calendar: Calendar = .current) {
         let info = GitHubJobInfo.decode(job.github)
         id = job.id
@@ -119,6 +121,7 @@ public struct JobRowPresentation: Sendable, Equatable {
         section = Self.section(job, now: now, calendar: calendar)
         settledAt = job.endedAt ?? (job.state == .lost ? job.startedAt : nil)
         detail = Detail(job, info: info)
+        self.load = job.state == .running ? load : nil
         meta = Self.meta(job, info: info, now: now, lastOutputAt: lastOutputAt, waitingFor: waitingFor)
     }
 
@@ -222,9 +225,9 @@ public struct JobRowPresentation: Sendable, Equatable {
 
 public extension Sequence where Element == JobRecord {
     /// Rows grouped in the Jobs tab's order, each group newest first.
-    func panelRows(now: Date, lastOutput: [String: Date] = [:], waitingFor: [String: String] = [:],
+    func panelRows(now: Date, lastOutput: [String: Date] = [:], waitingFor: [String: String] = [:], load: [String: JobLoad] = [:],
                    calendar: Calendar = .current) -> [(JobRowPresentation.Section, [JobRowPresentation])] {
-        let rows = sorted { $0.queuedAt > $1.queuedAt }.map { JobRowPresentation($0, now: now, lastOutputAt: lastOutput[$0.id], waitingFor: waitingFor[$0.id], calendar: calendar) }
+        let rows = sorted { $0.queuedAt > $1.queuedAt }.map { JobRowPresentation($0, now: now, lastOutputAt: lastOutput[$0.id], waitingFor: waitingFor[$0.id], load: load[$0.id], calendar: calendar) }
         return JobRowPresentation.Section.allCases.compactMap { section in
             let inSection = rows.filter { $0.section == section }
             return inSection.isEmpty ? nil : (section, inSection)

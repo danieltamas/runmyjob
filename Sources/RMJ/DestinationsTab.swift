@@ -29,10 +29,10 @@ struct DestinationCard: View {
 
     var body: some View {
         HoverCard(accent: Theme.tenant(card.tenant), action: { withAnimation(Motion.spring) { model.toggle(key) } }) {
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: 0) {
                 header
-                summary
-                if open { details }
+                summary.padding(.top, 7)
+                Collapsible(open: open) { details.padding(.top, 7) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

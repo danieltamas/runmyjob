@@ -12,10 +12,19 @@ public enum LogTail {
     /// Only the end of a large log is read.
     static let window = 64 * 1024
 
-    public static func read(jobID: String, home: RMJHome, lines: Int = maxLines) -> Result {
+    /// Where a job's log may be: the box's and GitHub's copy, then the one a local run writes (side `mac`); a running log is `.part`.
+    public static func candidates(jobID: String, home: RMJHome) -> [URL] {
         let logs = home.url.appendingPathComponent("logs")
-        for name in ["\(jobID).log", "\(jobID).log.part"] {
-            let url = logs.appendingPathComponent(name)
+        return ["\(jobID).log", "\(jobID).mac.log", "\(jobID).log.part", "\(jobID).mac.log.part"].map { logs.appendingPathComponent($0) }
+    }
+
+    /// The finished log of a job on this Mac, when there is one.
+    public static func archived(jobID: String, home: RMJHome) -> URL? {
+        candidates(jobID: jobID, home: home).first { !$0.lastPathComponent.hasSuffix(".part") && FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    public static func read(jobID: String, home: RMJHome, lines: Int = maxLines) -> Result {
+        for url in candidates(jobID: jobID, home: home) {
             guard let handle = try? FileHandle(forReadingFrom: url) else { continue }
             defer { try? handle.close() }
             let size = (try? handle.seekToEnd()) ?? 0

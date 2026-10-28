@@ -35,13 +35,15 @@ public struct PanelLoader: Sendable {
             .sorted { $0.queuedAt > $1.queuedAt }.prefix(Self.historyLimit)
         var lastOutput: [String: Date] = [:]
         for job in jobs where job.state == .running && job.github == nil {
-            let part = home.url.appendingPathComponent("logs/\(job.id).log.part").path
-            if let modified = (try? FileManager.default.attributesOfItem(atPath: part))?[.modificationDate] as? Date { lastOutput[job.id] = modified }
+            let parts = LogTail.candidates(jobID: job.id, home: home).filter { $0.lastPathComponent.hasSuffix(".part") }.map(\.path)
+            let modified = parts.compactMap { (try? FileManager.default.attributesOfItem(atPath: $0))?[.modificationDate] as? Date }.max()
+            if let modified { lastOutput[job.id] = modified }
         }
         let state = RulesStore(home: home).load()
         let cards = state.rules.map { DestinationLoader().cards(rules: $0, tailnet: tailnet, jobs: jobs, probes: probes, runners: runners, registrations: registrations, now: now) } ?? []
         var snapshot = PanelSnapshot(now: now, tailnet: tailnet, jobs: jobs, destinations: cards, rulesState: state, lastOutput: lastOutput, unseenFailure: unseenFailure)
         snapshot.history = Array(history)
+        snapshot.load = await LocalLoad.sample(jobs: jobs.filter { $0.state == .running && $0.github == nil && $0.location == "local" }.map(\.id), logs: archive.directory)
         return snapshot
     }
 

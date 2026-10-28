@@ -11,6 +11,8 @@ public struct PanelSnapshot: Sendable {
     /// When each running job last printed a line, from its log's modification time.
     public var lastOutput: [String: Date] { didSet { memo = Memo() } }
     public var waitingFor: [String: String] { didSet { memo = Memo() } }
+    /// Processor and memory of the running jobs on this Mac, by job id.
+    public var load: [String: JobLoad] = [:] { didSet { memo = Memo() } }
     public var githubPolledAt: Date?
     public var boxesPolledAt: Date?
     public var rateRemaining: Int?
@@ -70,14 +72,14 @@ public struct PanelSnapshot: Sendable {
     }
     public var queuedCount: Int { jobs.filter { $0.state == .queued }.count }
     public var rows: [(JobRowPresentation.Section, [JobRowPresentation])] {
-        memo.cached(\.rows) { jobs.panelRows(now: now, lastOutput: lastOutput, waitingFor: waitingFor) }
+        memo.cached(\.rows) { jobs.panelRows(now: now, lastOutput: lastOutput, waitingFor: waitingFor, load: load) }
     }
     public var historyRows: [(JobRowPresentation.Section, [JobRowPresentation])] {
         memo.cached(\.historyRows) { history.panelRows(now: now, lastOutput: [:], waitingFor: [:]) }
     }
     /// Live jobs and the thirty days behind them as one list: Running and Queued first, then Today, Yesterday, Earlier.
     public var allRows: [(JobRowPresentation.Section, [JobRowPresentation])] {
-        memo.cached(\.allRows) { (jobs + history).panelRows(now: now, lastOutput: lastOutput, waitingFor: waitingFor) }
+        memo.cached(\.allRows) { (jobs + history).panelRows(now: now, lastOutput: lastOutput, waitingFor: waitingFor, load: load) }
     }
     public var cards: [DestinationCardPresentation] { memo.cached(\.cards) { destinations.map { DestinationCardPresentation($0, now: now) } } }
     public var routing: RoutingPresentation? { memo.routing { rulesState.map { RoutingPresentation(state: $0, jobs: jobs) } } }
