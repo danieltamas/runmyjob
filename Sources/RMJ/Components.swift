@@ -522,7 +522,6 @@ struct Collapsible<Content: View>: View {
                     .onPreferenceChange(CollapsibleHeight.self) { height = $0 }
                     .frame(height: open ? height : 0, alignment: .top)
                     .clipped()
-                    .opacity(open ? 1 : 0)
                     .animation(Motion.snappy, value: height)
                     .allowsHitTesting(open)
                     .accessibilityHidden(!open)
