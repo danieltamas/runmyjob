@@ -19,7 +19,7 @@
 
 > **Status.** The app, the `rmj` command, routing, the GitHub poller and the box setup are built and
 > tested, including agent hooks (`rmj hooks install`: a Claude Code hook, shims for the other harnesses). The
-> read-only MCP server and signed releases are still to come;
+> read-only MCP server (`rmj mcp`, off until you switch it on in Settings > Agent access) are built too; signed releases are still to come;
 > `docs/PLAN.md` lists what is done and what is next.
 
 ## What you get

@@ -1,4 +1,5 @@
 import AppKit
+import RMJCore
 import SwiftUI
 
 /// Panes whose controls arrive with their own units (docs/PLAN.md): each says what exists today and what does not.
@@ -25,13 +26,34 @@ struct NotificationsPane: View {
 }
 
 struct AgentPane: View {
+    private static let connect = "claude mcp add rmj -- ~/.local/bin/rmj mcp"
+    @State private var enabled = AgentAccess.isEnabled(home: RMJHome())
+    @State private var error: String?
+
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            PaneHeader(pane: .agent, title: "Agent access", detail: "What an agent can read from RMJ.")
-            SettingsCard(title: "MCP server") {
-                Pending(text: "rmj mcp arrives with U10. It will be read-only, with logs redacted.")
+            PaneHeader(pane: .agent, title: "Agent access", detail: "What an agent can read from RMJ, and nothing more.")
+            SettingsCard(title: "MCP server", detail: "rmj mcp is read-only and local: jobs, failures, redacted logs, destinations and routing explanations. It starts, reruns and cancels nothing, and opens no connection to a box.") {
+                SwitchRow(title: "Let agents read RMJ data", isOn: Binding(get: { enabled }, set: { change($0) }))
+                if let error { StatusLine(text: error, tone: .failed) }
+                InstallLine(command: Self.connect)
+            }
+            SettingsCard(title: "What the switch covers") {
+                Text("It governs the MCP server only. An agent with a shell on this Mac can still run rmj, whose read commands have no switch; withhold run, rerun and cancel from it with a hook if it should only inspect.")
+                    .font(.system(size: 12)).foregroundStyle(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
             }
         }
+        .onAppear { enabled = AgentAccess.isEnabled(home: RMJHome()) }
+    }
+
+    private func change(_ on: Bool) {
+        do {
+            try AgentAccess.set(on, home: RMJHome())
+            error = nil
+        } catch {
+            self.error = "Cannot change the setting: \(error.localizedDescription)"
+        }
+        enabled = AgentAccess.isEnabled(home: RMJHome())
     }
 }
 

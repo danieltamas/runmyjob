@@ -100,10 +100,10 @@ rmj run [--to dest] [--shell] -- <command...>   route and run (the former rx); e
 rmj route [--repo owner/name] [--path dir] [--json] -- <command...>
 rmj jobs [--state s] [--repo r] [--destination d] [--source s] [--since 7d] [--json]
 rmj job <id> [--json]
-rmj log <id> [--tail N] [--pull]      --pull fetches from the box now if the archive is pending
+rmj log <id> [--tail N]               the archived log; a pending or unavailable one prints nothing and says why on stderr
 rmj failures [--since 24h] [--json]
-rmj destinations [--probe] [--json]
-rmj runners [--target t] [--prune]    --prune deletes this stack's offline idle registrations older than 10 min (asks)
+rmj destinations [--json]
+rmj runners [--target t] [--json]
 rmj rerun <id>                        rx: same argv, same worktree; GitHub: gh run rerun bound to the repo
 rmj cancel <id>
 rmj hooks install|status|remove [harness]
@@ -111,6 +111,13 @@ rmj guard <command> [--cwd path]      the hook entry point; exit 2 block, 1 advi
 rmj prune                             retention pass now, local and every reachable box
 rmj mcp                               the server
 ```
+
+`rmj jobs` with no flag keeps the reconciling listing of the 30 latest; any flag (`--limit`, `--json`, the filters)
+switches to the tool's shape. The read verbs have no access switch: a shell can run them anyway.
+
+Not in the tools: live box readings (`destinations` reports what the tailnet and the ledger know, with capacity
+figures `null` and `stale: true`; `runners` lists the registrations RMJ has recorded) and probes (`route` takes none,
+so a destination that needs a probe shows as skipped; `rmj route` gives the live answer).
 
 Exit codes: 0 ok, 1 error, 2 blocked (guard), the command's own for `run`. `--json` output is one
 object per line for lists, the same shapes as the tools.

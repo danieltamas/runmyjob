@@ -169,3 +169,9 @@
 - A fresh install now starts from an empty starter (Rules.starterJSON); the former default fleet rules live in the test fixture and in the owner's ~/.rmj/rules.json. Built-in tenant names and tenant colours by name are gone (colour is derived from the name). The guard allows a classified repo that no rule names. Tab switches no longer animate the whole tab content. 245 tests, check ok.
 - Open: the bundled `ledger` profile (BoxAssets, Support/box/profiles) and the runner-stack compose services for ledger/atlas are still the owner's; they need a user profile directory (~/.rmj/profiles) and a generated compose.
 - 2026-10-28 (no owner config in the repo): profiles are user files in ~/.rmj/profiles (ProfileStore), the bundled runner compose holds no services (all generated from runner_targets), Dockerfile.rust and the ledger profile are gone, the tenant deny is configured (`shared: true` marks a non-company tenant) instead of hardcoded names, docs/tests/fixtures use acme/globex/ledger/atlas. The owner's real rules.json and profiles live in ~/.rmj. 250 tests, check ok.
+
+## 2026-10-28 (U10) - agent API
+- Built: Sources/RMJCore/Agent (AgentAccess, MCPServer, tools, schemas, AgentCLI), `rmj mcp` (stdio), `rmj job|log|failures|destinations|runners` and `rmj jobs` with filters and `--json`, Settings > Agent access (switch plus the `claude mcp add` line). Acceptance tests by Codex: AgentAPIAcceptanceTests, AgentAPILogTests (hashes unchanged).
+- Review: Codex read-only, 2 P0 and 7 P1/P2; fixed or answered in docs/reviews/u10-2026-10-28.md.
+- Verified: swift test 265 passed, scripts/check.sh ok; stdio smoke test with a temp RMJ_HOME: initialize, access off -> isError, access on -> data, `rmj jobs --json`.
+- Open: `rmj log --pull`, `destinations --probe`, `runners --prune` are not built (the doc no longer lists them); capacity and runner figures in `destinations` stay null until a probe cache exists; route over MCP takes no live probe.

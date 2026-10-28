@@ -23,6 +23,16 @@ if arguments.first == "guard" {
 if arguments.first == "rerun" {
     exit(await GitHubCommand.rerun(arguments: Array(arguments.dropFirst())))
 }
+if arguments.first == "mcp" {
+    exit(await MCPServe.run())
+}
+if let verb = arguments.first, AgentCLI.verbs.contains(verb) {
+    exit(await AgentCLI.run(verb: verb, arguments: Array(arguments.dropFirst())))
+}
+// `rmj jobs` alone keeps the reconciling listing; any flag asks for the filtered, machine-readable one.
+if arguments.first == "jobs", arguments.dropFirst().contains(where: { $0.hasPrefix("--") }) {
+    exit(await AgentCLI.run(verb: "jobs", arguments: Array(arguments.dropFirst())))
+}
 if let command = arguments.first, ["run", "jobs", "cancel"].contains(command) {
     let rest = Array(arguments.dropFirst())
     switch command {

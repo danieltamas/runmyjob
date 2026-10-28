@@ -182,7 +182,7 @@ private struct LinkChip: View {
 }
 
 /// The install command in a well, with a copy button that answers the press.
-private struct InstallLine: View {
+struct InstallLine: View {
     let command: String
 
     var body: some View {
