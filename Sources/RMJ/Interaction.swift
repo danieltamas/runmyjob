@@ -151,3 +151,37 @@ private struct SwitchTrack: View {
             }
     }
 }
+
+/// Reports whether the pointer is over the view behind which it sits, from an AppKit tracking area. SwiftUI's own hover
+/// is lost whenever the view is rebuilt under a resting pointer (every poll rebuilds the rows) and in a panel that is not
+/// the key window; a tracking area lives with its NSView, which SwiftUI keeps.
+struct HoverRegion: NSViewRepresentable {
+    @Binding var inside: Bool
+
+    func makeNSView(context: Context) -> Tracker {
+        let view = Tracker()
+        view.onChange = { inside = $0 }
+        return view
+    }
+
+    func updateNSView(_ view: Tracker, context: Context) { view.onChange = { inside = $0 } }
+
+    final class Tracker: NSView {
+        var onChange: (Bool) -> Void = { _ in }
+        private var area: NSTrackingArea?
+
+        /// Clicks and drags go to the views in front of it.
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let area { removeTrackingArea(area) }
+            let fresh = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
+            addTrackingArea(fresh)
+            area = fresh
+        }
+
+        override func mouseEntered(with event: NSEvent) { onChange(true) }
+        override func mouseExited(with event: NSEvent) { onChange(false) }
+    }
+}

@@ -105,18 +105,9 @@ private struct MomentsTip: ViewModifier {
     func body(content: Content) -> some View {
         content
             .contentShape(Rectangle())
-            // Continuous: a plain enter/exit hover is missed in a panel that is not the key window.
-            .onContinuousHover { phase in
-                guard !moments.isEmpty else { return }
-                let inside: Bool
-                switch phase {
-                case .active: inside = true
-                case .ended: inside = false
-                }
-                if inside != shown { withAnimation(Motion.snappy) { shown = inside } }
-            }
+            .background(HoverRegion(inside: $shown))
             .overlay(alignment: .topLeading) {
-                if shown {
+                if shown, !moments.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(moments, id: \.label) { moment in
                             HStack(spacing: 10) {
@@ -135,6 +126,7 @@ private struct MomentsTip: ViewModifier {
                     .allowsHitTesting(false)
                 }
             }
+            .animation(Motion.snappy, value: shown)
     }
 }
 
