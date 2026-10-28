@@ -17,10 +17,34 @@
   <img src="https://img.shields.io/badge/license-MIT-22C55E" alt="MIT">
 </p>
 
-> **Status.** The app, the `rmj` command, routing, the GitHub poller and the box setup are built and
-> tested, including agent hooks (`rmj hooks install`: a Claude Code hook, shims for the other harnesses). The
-> read-only MCP server (`rmj mcp`, off until you switch it on in Settings > Agent access) are built too; signed releases are still to come;
-> `docs/PLAN.md` lists what is done and what is next.
+<p align="center">
+  <img src="docs/assets/demo.gif" width="560" alt="RMJ in the menu bar: jobs running on a box, a failed run with its log, routing rules">
+</p>
+
+<table>
+  <tr>
+    <td width="33%"><img src="docs/assets/jobs.png" alt="Jobs: running, queued and finished runs"><br><sub><b>Jobs.</b> Every run in one list, live.</sub></td>
+    <td width="33%"><img src="docs/assets/destinations.png" alt="Destinations: your boxes with runners and capacity"><br><sub><b>Destinations.</b> Your boxes, runners, capacity.</sub></td>
+    <td width="33%"><img src="docs/assets/routing.png" alt="Routing: rules, first match wins, tenant deny"><br><sub><b>Routing.</b> Rules you write, a boundary no rule crosses.</sub></td>
+  </tr>
+</table>
+
+## How it works
+
+```mermaid
+flowchart LR
+  A["Agent or terminal<br/>rmj run -- cargo test"] --> R{"RMJ rules<br/>first match wins"}
+  R -- "box is up, tenant matches" --> B["Your Linux box<br/>over Tailscale: rsync, docker"]
+  R -- "no rule, tailnet down, sync failed" --> L["This Mac<br/>the ledger says why"]
+  G["GitHub Actions<br/>self-hosted runner"] --> B
+  B --> J[("Jobs, timings, logs<br/>30 days")]
+  L --> J
+  J --> M["Menu bar panel, rmj CLI, MCP"]
+```
+
+> **Status.** The app, the `rmj` command, routing, the GitHub poller, box setup, agent hooks and a read-only MCP
+> server (`rmj mcp`) are built and tested. Releases are ad hoc signed, not notarized, and the first one is not out yet:
+> [docs/PLAN.md](docs/PLAN.md) lists what is done and what is next.
 
 ## What you get
 
@@ -98,14 +122,26 @@ installs (`install.sh`) arrive with the first signed release.
 4. **Run something:** in a checkout, `rmj route -- cargo test` says where it would run, and
    `rmj run -- cargo test` runs it there. The panel shows it live.
 
+## For agents
+
+RMJ is made to sit under coding agents (Claude Code, Codex, OpenCode, Hermes). Run
+`rmj hooks install claude-code` or press Install in Settings > Hooks: a bare `cargo test` or `just check` is
+then blocked with the `rmj run` form, so it lands on a box and in the panel. Codex, OpenCode and Hermes get shims.
+`rmj mcp` is a read-only MCP server (jobs, logs, failures, routes), off until you switch it on in Settings > Agent
+access. Details in [docs/AGENT-API.md](docs/AGENT-API.md).
+
 ## The `rmj` command
 
-```bash
-rmj route -- cargo test          # where would this run, and why
-rmj run -- cargo test            # run it there, tracked in the panel
-rmj destination setup <name>     # bring a box to ready (idempotent)
-rmj github poll                  # refresh GitHub runs
-```
+| Command | What it does |
+| --- | --- |
+| `rmj route -- cargo test` | where this would run, and why, without running it |
+| `rmj run -- cargo test` | route, run and track it; the exit code is the command's |
+| `rmj jobs`, `rmj job <id>`, `rmj log <id>` | the ledger: state, timings, the archived log |
+| `rmj failures`, `rmj destinations`, `rmj runners` | what failed, what the boxes are doing (`--json` for scripts) |
+| `rmj rerun <id>`, `rmj cancel <id>` | run it again, stop it |
+| `rmj destination setup <name>` | bring a box to ready (idempotent) |
+| `rmj hooks install\|status\|remove` | agent hooks and shims |
+| `rmj mcp` | the MCP server over stdio |
 
 ## Build and test
 
