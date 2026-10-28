@@ -201,3 +201,4 @@
 - Evidence: 317 tests pass, `scripts/check.sh` ok.
 - Failed GitHub jobs are now archived automatically by the app's background loop (3 per round, once per job; a failed fetch stays pending). 317 tests, check ok.
 - Machine cleanup (agent-os, uncommitted there): `rx` is a forwarder to `rmj run`; the old build guard and its tests are gone; CANON and rules/remote-build.md point at RMJ. Open: `rmj hooks install claude-code` (owner), then debug.
+- Idle CPU: the panel loop now beats every 15 s when the panel is closed and nothing runs (5 s open, 1 s running); the failed-log archive runs once a minute. perf.sh 240 s: idle 0.29% (budget 0.3%), streaming 0.40%. The full 600 s run is still to do. `brag-output/` and `runmyjob.mp4` are git-ignored.

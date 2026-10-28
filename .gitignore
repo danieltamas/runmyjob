@@ -8,3 +8,5 @@ dist/
 .ship/
 *.xcodeproj/
 xcuserdata/
+brag-output/
+/runmyjob.mp4

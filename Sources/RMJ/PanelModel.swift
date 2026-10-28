@@ -133,7 +133,9 @@ final class PanelModel: ObservableObject {
                     self?.boxesPolledAt = await background.boxesPolledAt
                 }
                 let busy = self?.snapshot.runningCount ?? 0 > 0
-                try? await Task.sleep(for: .seconds(busy ? 1 : 5))
+                // Closed and idle: the menu bar icon is all that shows, so a longer beat costs nothing visible.
+                let hiddenIdle = !busy && !(self?.panelVisible ?? true)
+                try? await Task.sleep(for: .seconds(busy ? 1 : hiddenIdle ? 15 : 5))
             }
         }
     }

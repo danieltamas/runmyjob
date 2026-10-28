@@ -23,13 +23,17 @@ public actor AppBackground {
         var repos: [String] = []
         var reposAt = Date.distantPast
         var reconciledAt = Date.distantPast
+        var archivedAt = Date.distantPast
+        var tokens: (@Sendable (String) -> String?)?
         while !Task.isCancelled {
             let store = RulesStore(home: home)
             if case .valid(let rules, _) = store.load() {
                 if let existing = poller {
                     await existing.update(rules: rules)
                 } else {
-                    poller = GitHubPoller(api: GHCLI(), ledger: context.ledger, rules: rules, orgToken: GitHubCommand.orgTokens(rules: rules, home: home))
+                    let read = GitHubCommand.orgTokens(rules: rules, home: home)
+                    tokens = read
+                    poller = GitHubPoller(api: GHCLI(), ledger: context.ledger, rules: rules, orgToken: read)
                 }
                 if let poller {
                     if Date().timeIntervalSince(reposAt) > 60 { repos = (try? await poller.watchedRepos()) ?? repos; reposAt = Date() }
@@ -38,7 +42,10 @@ public actor AppBackground {
                         githubPolledAt = Date()
                         due[name] = Date().addingTimeInterval(result.rateLimited ? GitHubPoller.idleInterval : (try? await poller.interval(for: name)) ?? GitHubPoller.idleInterval)
                     }
-                    await archiveFailedLogs(ledger: context.ledger, archive: context.archive, tokens: GitHubCommand.orgTokens(rules: rules, home: home))
+                    if Date().timeIntervalSince(archivedAt) >= 60 {
+                        archivedAt = Date()
+                        await archiveFailedLogs(ledger: context.ledger, archive: context.archive, tokens: tokens ?? { _ in nil })
+                    }
                     footerNote = await poller.rateLimitedUntil() != nil ? await poller.footer() : nil
                 }
                 let live = ((try? await context.ledger.jobs()) ?? []).contains { !$0.state.isSettled && $0.github == nil }
