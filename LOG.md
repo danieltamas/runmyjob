@@ -211,3 +211,10 @@
 - Routing tab: Test your rules first, workflows seen collapsed, tenant deny as a footer.
 - Idle CPU budget relaxed from 0.3% to 0.4% (owner's call); perf.sh 300 s on this build: see the line below.
 - perf.sh 300: perf: idle 0.24% over 300s (budget 0.4%)
+
+## 2026-10-29 - release 0.1.0
+
+- First public release: the menu bar app and `rmj` CLI. Routing of builds and tests to your Tailscale boxes with a local fallback, one Jobs list over 30 days with search and filters, Destinations with runners and capacity, Routing rules with a "Test your rules" dry run, GitHub job logs archived on demand and after failures, notifications, updater.
+- Local runs record their average CPU and memory. Box runs are not measured yet.
+- Ad hoc signed, reproducible build; no Developer ID, so a browser download is blocked on first open (install.sh and the cask fetch it without the quarantine flag).
+- Pending: the second company (s1) scenario; `live` against a real box was not run for this release; the manual check of a failed job's log opened from its notification is not recorded.
