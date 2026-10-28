@@ -1,0 +1,10 @@
+.build/
+build/
+.swiftpm/
+.DS_Store
+dist/
+.claude/
+.remember/
+.ship/
+*.xcodeproj/
+xcuserdata/

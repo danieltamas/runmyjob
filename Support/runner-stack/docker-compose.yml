@@ -1,0 +1,26 @@
+# GitHub Actions self-hosted runners on a destination box.
+#
+# One ephemeral runner container per runner target in the destination's rules.json entry. A runner takes
+# one job, exits, and the restart policy brings it back registered afresh (entrypoint.sh). No service
+# publishes a port, none mounts the Docker socket, every service has CPU, memory and pid limits so a
+# runaway test never squeezes the rest of the box.
+#
+# This file holds only what the services share; RMJ writes docker-compose.rmj.yml next to it with one
+# service per target (`rmj ops deploy`).
+
+x-runner: &runner
+  build: .
+  image: gh-runner:2.338.2
+  restart: unless-stopped
+  # No `init: true`: that would make tini PID 1 with the PAT in its environment before the
+  # entrypoint can unset it. The entrypoint execs tini itself after the credentials are gone.
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 2048
+  networks: [ci]
+
+services: {}
+
+networks:
+  ci:
+    driver: bridge

@@ -1,0 +1,3 @@
+# The toolchain a release is built with; scripts/release.sh refuses any other.
+xcode-build 17C52
+# For reference: Xcode 26.2, Swift 6.2.3, macOS SDK 26.2, ld-1230.1

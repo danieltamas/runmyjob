@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="36" height="36">
+  <!-- template image: black on transparent; macOS tints it for light and dark menu bars.
+       One source, a route to two destinations; the chosen one is a filled box, the other outlined.
+       The app adds the running count or the failed badge next to it at run time. -->
+  <path d="M8 18C14 18 14 11 20 11L26 11" fill="none" stroke="#000" stroke-width="2.6" stroke-linecap="round"/>
+  <path d="M8 18C14 18 14 25 20 25L26 25" fill="none" stroke="#000" stroke-opacity="0.45" stroke-width="2.6" stroke-linecap="round"/>
+  <circle cx="8" cy="18" r="3.2" fill="#000"/>
+  <rect x="24.5" y="7.5" width="7" height="7" rx="1.8" fill="#000"/>
+  <rect x="25.4" y="22.4" width="5.2" height="5.2" rx="1.4" fill="none" stroke="#000" stroke-opacity="0.45" stroke-width="1.8"/>
+</svg>

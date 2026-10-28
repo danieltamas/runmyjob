@@ -1,0 +1,43 @@
+{
+  "BackendState": "Running",
+  "Self": {
+    "ID": "n-mac-1",
+    "Online": true,
+    "HostName": "owner-mac",
+    "TailscaleIPs": [
+      "100.64.0.2"
+    ]
+  },
+  "CurrentTailnet": {
+    "MagicDNSEnabled": true
+  },
+  "Peer": {
+    "nodekey:ai-acme": {
+      "ID": "n-ai-acme-1",
+      "HostName": "ai-eu-1",
+      "DNSName": "ai-eu-1.example-tailnet.ts.net.",
+      "TailscaleIPs": [
+        "100.64.0.10",
+        "fd7a:115c:a1e0::10"
+      ],
+      "Online": true,
+      "LastSeen": "2026-10-27T09:00:00Z",
+      "KeyExpiry": "2099-10-27T08:00:00Z",
+      "Relay": "fra",
+      "CurAddr": "192.0.2.10:41641"
+    },
+    "nodekey:other": {
+      "ID": "n-other-1",
+      "HostName": "other-box",
+      "DNSName": "other-box.example-tailnet.ts.net.",
+      "TailscaleIPs": [
+        "100.64.0.20"
+      ],
+      "Online": true,
+      "LastSeen": "2026-10-27T09:00:00Z",
+      "KeyExpiry": "2099-10-27T08:00:00Z",
+      "Relay": "fra",
+      "CurAddr": "192.0.2.10:41641"
+    }
+  }
+}

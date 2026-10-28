@@ -1,0 +1,25 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      # Support/toolchain pins the Xcode build a release uses. CI takes that build when the
+      # image has it, else fails when the image lacks it.
+      - name: Select Xcode
+        run: |
+          want=$(awk '$1 == "xcode-build" { print $2 }' Support/toolchain)
+          for app in /Applications/Xcode*.app; do
+            build=$(DEVELOPER_DIR="$app/Contents/Developer" xcodebuild -version | awk '/Build version/ { print $3 }')
+            echo "$app $build"
+            if [[ $build == "$want" ]]; then pick=$app; break; fi
+          done
+          [[ -n ${pick:-} ]] || { echo "no Xcode matching $want" >&2; exit 1; }
+          echo "DEVELOPER_DIR=$pick/Contents/Developer" >> "$GITHUB_ENV"
+      - run: scripts/check.sh --scratch "$RUNNER_TEMP/rmj-build"
