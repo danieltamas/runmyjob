@@ -27,8 +27,16 @@ own commit.
    scenario as pending and record the manual check: a failed job's log opened from its notification.
 5. `RMJ_VERSION=X.Y.Z ./install.sh` on a clean user, then `scripts/tap.sh X.Y.Z`.
 6. `scripts/acceptance.sh release`.
+7. Announce the release to the registry (last step; a failed ping is not a failed release, the registry's hourly
+   refresh picks it up). Needs `gh` logged in as the owner:
+   ```
+   gh api repos/danieltamas/registry/dispatches -f event_type=release
+   for i in $(seq 18); do v=$(gh api repos/danieltamas/registry/contents/apps.json --jq '.content | @base64d | fromjson | .apps[] | select(.repo == "danieltamas/runmyjob") | .latest.version'); test "$v" = "X.Y.Z" && exit 0; sleep 10; done; echo "registry shows ${v:-no release} for danieltamas/runmyjob, not X.Y.Z"; exit 1
+   ```
+   Before a release, `scripts/registry-snapshot.sh` refreshes the bundled copy (`Support/Registry`, its registry
+   commit in `COMMIT`); commit the result.
 
 ## Status
 Prepared and verified locally: the reproducible build (two builds identical), the MCP smoke test, the scripts above.
-Not done: the repository is not public, there is no tag, the cask repository does not exist, `live` and the 10-minute
+Not done: the registry ping and its confirmation have never run (there is no release to check them against); the repository is not public, there is no tag, the cask repository does not exist, `live` and the 10-minute
 idle `perf` run are not recorded.

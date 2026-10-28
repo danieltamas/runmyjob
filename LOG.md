@@ -186,3 +186,9 @@
 - Built: scripts/release.sh (ad hoc, reproducible, --verify), acceptance.sh (steps 1-6), mcp-smoke.py, perf.sh, tap.sh, release-verify workflow, docs/RELEASE.md. Idle polling: one ledger read per snapshot, `tailscale status` every 30 s while nothing runs.
 - Verified: `release.sh 0.1.0 --verify --ref HEAD` two builds identical; `acceptance.sh mcp` ok (8 tools, slowest 43 ms).
 - Open: idle CPU measures 0.43% over 120 s against the 0.3% budget (streaming 0.33% against 2%); live, the 10-minute perf run, the public repo, tag, cask and release are not done. No Developer ID: ad hoc signing only.
+
+## 2026-10-28 (registry) - More apps from the registry
+- Built: Sources/RMJCore/Registry (decoder and rules, store, icon check, refresh rule, download; ported from MacMax), Sources/RMJ/MoreAppsModel.swift, MoreAppsPane on the registry (RMJ's own id "rmj" dropped), Support/Registry snapshot (scripts/registry-snapshot.sh, registry commit in Support/Registry/COMMIT) shipped by bundle.sh; the hard-coded list, its ReleaseFeed calls and Support/MoreApps are gone.
+- Tests: Codex ported MacMax's two registry suites and added the CONSUMER.md acceptance lines; 304 tests pass unchanged.
+- Release ping and confirmation added as the last step of docs/RELEASE.md (repository name runmyjob). Never run: there is no release to check it against.
+- Docs: README, SECURITY (network), PLAN non-goals, ARCHITECTURE.

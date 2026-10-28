@@ -54,7 +54,10 @@ press.
    `Support/runner-stack/README.md` (ephemeral runners, no PAT in a job's environment, no Docker
    socket, no inbound port).
 9. **Network.** Destinations: ssh and rsync to verified tailnet addresses, `api.github.com` via
-   `gh`, and the update check against this repository's releases. Nothing else, no telemetry.
+   `gh`, the update check against this repository's releases, and the More apps list: one file and its
+   icons from `raw.githubusercontent.com/danieltamas/registry`, validated before use (ASCII, at most 64 KiB,
+   hosts and install commands on an allowlist, icons PNG 256 x 256 at most 64 KiB) and stored under
+   `~/.rmj/registry/`. Nothing else, no telemetry.
 
 ## Data kept on this Mac
 

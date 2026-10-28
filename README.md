@@ -120,11 +120,9 @@ SwiftPM only, Swift 6, no third-party packages, no telemetry.
 
 ## More from the same maker
 
-- [Bton](https://github.com/danieltamas/bton): pull requests that move themselves, with coding agents, from the menu bar.
-- [MacMax](https://github.com/danieltamas/macmax): why is my Mac slow? One answer.
-- [Axon](https://github.com/danieltamas/axon): a coordination bus for the coding agents on your machine.
-- [Cloak](https://github.com/danieltamas/cloak): protect .env secrets from AI coding agents.
-- [run.dev](https://github.com/danieltamas/run.dev): an AI-native local dev environment.
+Settings > More apps lists the maker's other tools, read from the
+[registry](https://github.com/danieltamas/registry) (a bundled copy offline, a refresh at most hourly from
+`raw.githubusercontent.com/danieltamas/registry`, nothing else).
 
 RMJ does not need any of them, and none of them need RMJ.
 

@@ -1,0 +1,154 @@
+{
+  "schema": 1,
+  "updated": "2026-10-28T17:17:39Z",
+  "apps": [
+    {
+      "id": "macmax",
+      "name": "MacMax",
+      "kind": "menu-bar",
+      "platform": "macOS",
+      "pitch": "Why is my Mac slow? One answer, from the menu bar.",
+      "detail": "Shows what is using your Mac, checks it on a schedule, and tells you what to close, what to clean and whether your VPN is really on.",
+      "repo": "danieltamas/macmax",
+      "site": null,
+      "icon": "icons/macmax.png",
+      "iconShape": "macos",
+      "install": "brew install --cask danieltamas/tap/macmax",
+      "mac": {
+        "bundleId": "ro.danieltamas.macmax",
+        "sourceKey": "MacMaxSource"
+      },
+      "hue": {
+        "dark": "#27C4B0",
+        "light": "#008760"
+      },
+      "latest": {
+        "version": "0.4.1",
+        "tag": "v0.4.1",
+        "publishedAt": "2026-10-28T17:16:43Z",
+        "url": "https://github.com/danieltamas/macmax/releases/tag/v0.4.1"
+      }
+    },
+    {
+      "id": "bton",
+      "name": "Bton",
+      "kind": "menu-bar",
+      "platform": "macOS",
+      "pitch": "Pull requests that move themselves.",
+      "detail": "Runs your team's review flow with coding agents, Claude Code, Codex or any CLI, from the menu bar.",
+      "repo": "danieltamas/bton",
+      "site": null,
+      "icon": "icons/bton.png",
+      "iconShape": "macos",
+      "install": "brew install --cask danieltamas/tap/bton",
+      "mac": {
+        "bundleId": "ro.danieltamas.bton",
+        "sourceKey": "BtonSource"
+      },
+      "hue": {
+        "dark": "#5EE6E0",
+        "light": "#0B7F86"
+      },
+      "latest": {
+        "version": "0.12.0",
+        "tag": "v0.12.0",
+        "publishedAt": "2026-10-28T14:01:24Z",
+        "url": "https://github.com/danieltamas/bton/releases/tag/v0.12.0"
+      }
+    },
+    {
+      "id": "rmj",
+      "name": "RMJ",
+      "kind": "menu-bar",
+      "platform": "macOS",
+      "pitch": "Run My Job: your builds and tests, on your boxes.",
+      "detail": "Sends the builds and test suites your agents start to the Linux boxes on your tailnet, and shows every run in one place.",
+      "repo": "danieltamas/runmyjob",
+      "site": null,
+      "icon": "icons/rmj.png",
+      "iconShape": "macos",
+      "install": "brew install --cask danieltamas/tap/rmj",
+      "mac": {
+        "bundleId": "ro.danieltamas.rmj",
+        "sourceKey": "RMJSource"
+      },
+      "hue": {
+        "dark": "#5AA9FF",
+        "light": "#1F6FD1"
+      },
+      "latest": null
+    },
+    {
+      "id": "axon",
+      "name": "Axon",
+      "kind": "terminal",
+      "platform": "macOS and Linux",
+      "pitch": "Your coding agents, on one bus.",
+      "detail": "Lets Claude Code, Codex, OpenCode and Hermes see and talk to each other, and shows what each one does and costs. Fully local.",
+      "repo": "danieltamas/axon",
+      "site": null,
+      "icon": "icons/axon.png",
+      "iconShape": "macos",
+      "install": "brew install danieltamas/tap/axon",
+      "mac": null,
+      "hue": {
+        "dark": "#4ADE80",
+        "light": "#15803D"
+      },
+      "latest": {
+        "version": "0.4.9",
+        "tag": "v0.4.9",
+        "publishedAt": "2026-10-25T09:25:04Z",
+        "url": "https://github.com/danieltamas/axon/releases/tag/v0.4.9"
+      }
+    },
+    {
+      "id": "rundev",
+      "name": "Run.dev",
+      "kind": "terminal",
+      "platform": "macOS and Linux",
+      "pitch": "Every local service, one dashboard.",
+      "detail": "One binary starts and watches the services of all your projects from a terminal dashboard, with no config files to babysit.",
+      "repo": "danieltamas/run.dev",
+      "site": "https://getrun.dev",
+      "icon": "icons/rundev.png",
+      "iconShape": "full-bleed",
+      "install": "curl -fsSL https://getrun.dev/install.sh | bash",
+      "mac": null,
+      "hue": {
+        "dark": "#45C8D4",
+        "light": "#0A7C93"
+      },
+      "latest": {
+        "version": "0.3.7",
+        "tag": "v0.3.7",
+        "publishedAt": "2026-10-27T11:58:23Z",
+        "url": "https://github.com/danieltamas/run.dev/releases/tag/v0.3.7"
+      }
+    },
+    {
+      "id": "cloak",
+      "name": "Cloak",
+      "kind": "terminal",
+      "platform": "CLI and VS Code",
+      "pitch": "Keep .env secrets away from AI agents.",
+      "detail": "Agents see sandbox values, you see the real ones, and your app still runs with real credentials. Encrypted vault, Touch ID.",
+      "repo": "danieltamas/cloak",
+      "site": "https://getcloak.dev",
+      "icon": "icons/cloak.png",
+      "iconShape": "full-bleed",
+      "install": "curl -fsSL https://getcloak.dev/install.sh | sh",
+      "mac": null,
+      "hue": {
+        "dark": "#5B9BFF",
+        "light": "#2457C5"
+      },
+      "latest": {
+        "version": "0.4.5",
+        "tag": "v0.4.5",
+        "publishedAt": "2026-07-06T08:59:07Z",
+        "url": "https://github.com/danieltamas/cloak/releases/tag/v0.4.5"
+      }
+    }
+  ]
+}

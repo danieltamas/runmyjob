@@ -97,7 +97,8 @@ notification.
   count plus a memory budget per destination (U3); one owner, two boxes.
 - Multi-user, teams, a hosted service, Windows or Linux clients.
 - Any network call besides ssh and rsync to verified tailnet addresses, the GitHub API through
-  `gh`, and the update check.
+  `gh`, the update check, and the More apps list read from the registry
+  (`raw.githubusercontent.com/danieltamas/registry`).
 
 ## Layout
 

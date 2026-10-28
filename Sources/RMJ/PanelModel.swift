@@ -47,6 +47,7 @@ final class PanelModel: ObservableObject {
     /// What the last release check found; the header shows an arrow when it is `.available`.
     @Published var updateStatus: UpdateStatus = .unknown
     let alerts = AlertCenter()
+    let moreApps = MoreAppsModel()
 
     /// The repos the rule editor offers: those of every job and history row and of the rules themselves.
     var knownRepos: [String] {

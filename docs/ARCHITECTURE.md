@@ -13,6 +13,7 @@ Sources/RMJCore/         everything testable; imports Foundation, Darwin, Securi
   Run/                   RunEngine (rmj run), Sync (locked), BoxRun (rx-run.sh contract: argv,
                          launch record, streaming), LocalRun, Cancel, Reconcile (.launch/.rc/.meta,
                          boot id), Warmth (cold marker)
+  Registry/              the More apps list: decoder and rules (the registry's CONSUMER.md), store under ~/.rmj/registry, icon check
   GitHub/                GHClient (gh auth token, conditional requests), RunsPoller, RunnersPoller,
                          QueueReason, Rerun
   Ops/                   AddDestination, RunnerStack (deploy, start/stop, recreate when idle),

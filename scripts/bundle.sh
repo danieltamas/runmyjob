@@ -77,7 +77,7 @@ fi
 cp Support/AppIcon.icns Support/MenuBarIcon.pdf "$app/Contents/Resources/"
 # What setup puts on a box: the runner stack and the rx image Dockerfiles.
 mkdir -p "$app/Contents/Resources/box"
-cp -R Support/MoreApps "$app/Contents/Resources/"
+cp -R Support/Registry "$app/Contents/Resources/"
 cp -R Support/runner-stack "$app/Contents/Resources/runner-stack"
 cp -R Support/box/images "$app/Contents/Resources/box/images"
 # About's Update runs the same installer as the curl line, pinned to the release it showed.

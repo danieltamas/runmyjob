@@ -83,8 +83,8 @@ lint_leftovers() {
     [[ -e $root/$path ]] || continue
     # The name is spelled in two pieces so this file does not match itself.
     # grep exits 1 for no match and 2 for a read error: only the first is a clean result.
-    # The sibling repository's own slug is data (the shipped tenant table), not a leftover; so is the cross-promotion pane.
-    hits=$(grep -rIin -e 'mac''max' "$root/$path" | grep -vi 'danieltamas/mac''max' | grep -v 'Sources/RMJ/MoreAppsPane.swift' | cut -d: -f1 | sort -u; exit "${PIPESTATUS[0]}") && status=0 || status=$?
+    # The sibling repository's own slug is data (the shipped tenant table), not a leftover; so is the registry snapshot (the registry lists the sibling app).
+    hits=$(grep -rIin -e 'mac''max' "$root/$path" | grep -vi 'danieltamas/mac''max' | grep -v 'Support/Registry/' | cut -d: -f1 | sort -u; exit "${PIPESTATUS[0]}") && status=0 || status=$?
     ((status <= 1)) || { fail "cannot scan $path for the predecessor name"; continue; }
     [[ -z $hits ]] || fail "leftover predecessor name in: ${hits//"$root"\//}"
   done
