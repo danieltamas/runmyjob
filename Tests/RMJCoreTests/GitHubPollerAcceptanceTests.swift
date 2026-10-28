@@ -167,14 +167,19 @@ struct GitHubPollerAcceptanceTests {
         let f = try U5Fixture(); defer { f.remove() }
         let poller = f.poller()
         #expect(GitHubPoller.activeInterval == 15 && GitHubPoller.idleInterval == 120)
+        #expect(GitHubPoller.quietInterval == 300)
+        #expect(try await poller.interval(for: f.repo) == 300)
+        try await f.ledger.insert(JobRecord(id: "gh-settled-1", repo: f.repo, command: "CI", location: "github-hosted", state: .done, queuedAt: f.clock.now()))
         #expect(try await poller.interval(for: f.repo) == 120)
+        f.clock.advance(86_400 + 60)
+        #expect(try await poller.interval(for: f.repo) == 300)
         for (id, state) in [("gh-q-1", JobState.queued), ("gh-r-1", .running)] {
             let repo = f.repo + id
             try await f.ledger.insert(JobRecord(id: id, repo: repo, command: "CI", location: "github-hosted", state: state, queuedAt: f.clock.now()))
             #expect(try await poller.interval(for: repo) == 15)
         }
         let footer = await poller.footer()
-        #expect(footer.contains("15 s") && footer.contains("120 s"))
+        #expect(footer.contains("15 s") && footer.contains("120 s") && footer.contains("300 s"))
     }
 
     @Test func rerunAttemptLinksParentWithoutMutatingPriorRow() async throws {

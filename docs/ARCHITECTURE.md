@@ -75,7 +75,7 @@ CLI's writes within a second. When the app is not running, `rmj run` still recor
 |--------|--------------------------------------|------|
 | TailnetState | 10 s | 60 s |
 | DestinationProbe (per destination) | 30 s | 5 min |
-| GitHub runs and jobs | 15 s | 120 s |
+| GitHub runs and jobs | 15 s | 120 s (300 s for a repo with no run in a day) |
 | GitHub runners | 60 s | 10 min |
 | Local log tail (one running rx job) | streaming | none |
 

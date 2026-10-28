@@ -13,6 +13,8 @@ public struct GitHubPollResult: Sendable, Equatable {
 public actor GitHubPoller {
     public static let activeInterval: TimeInterval = 15
     public static let idleInterval: TimeInterval = 120
+    /// A repo with no run in the last day: each poll is a `gh` process, and dozens of quiet repos cost more than everything else RMJ does.
+    public static let quietInterval: TimeInterval = 300
     public static let backfillWindow: TimeInterval = 30 * 86400
     static let ownerListingTTL: TimeInterval = 3600
 
@@ -48,7 +50,7 @@ public actor GitHubPoller {
 
     /// The panel footer: both intervals, and the pause when GitHub's limit is in force.
     public func footer() async -> String {
-        let base = "GitHub polling: \(Int(Self.activeInterval)) s with queued or running jobs, \(Int(Self.idleInterval)) s otherwise"
+        let base = "GitHub polling: \(Int(Self.activeInterval)) s with queued or running jobs, \(Int(Self.idleInterval)) s after a run in the last day, \(Int(Self.quietInterval)) s otherwise"
         guard let until = await rateLimitedUntil() else { return base }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -63,11 +65,15 @@ public actor GitHubPoller {
 
     // MARK: Intervals
 
-    /// 15 s while the repo has something queued or running, else 120 s.
+    /// 15 s while the repo has something queued or running, 120 s after a run in the last day, else 300 s.
     public func interval(for repo: String) async throws -> TimeInterval {
         let active = try await ledger.database.query(
             "SELECT 1 FROM job WHERE repo = ? AND id LIKE 'gh-%' AND state IN ('queued', 'running') LIMIT 1", [.text(repo)])
-        return active.isEmpty ? Self.idleInterval : Self.activeInterval
+        if !active.isEmpty { return Self.activeInterval }
+        let dayAgo = Int64((now().timeIntervalSince1970 - 86_400) * 1000)
+        let recent = try await ledger.database.query(
+            "SELECT 1 FROM job WHERE repo = ? AND id LIKE 'gh-%' AND queued_at > ? LIMIT 1", [.text(repo), .int(dayAgo)])
+        return recent.isEmpty ? Self.quietInterval : Self.idleInterval
     }
 
     // MARK: Watched set
