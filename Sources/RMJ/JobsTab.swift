@@ -103,7 +103,6 @@ struct JobRowView: View {
     let expanded: Bool
     let model: PanelModel
     let toggle: () -> Void
-    @State private var tipShown = false
 
     var body: some View {
         HoverCard(accent: Theme.color(row.stateChip.tone), action: toggle) {
@@ -117,8 +116,6 @@ struct JobRowView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        // The hover card hangs below the card's own line: this row draws over the ones after it while it shows.
-        .zIndex(tipShown ? 10 : 0)
     }
 
     private var titleLine: some View {
@@ -177,7 +174,8 @@ struct JobRowView: View {
     /// How it is going or how it went; a run on this Mac adds its processor and memory.
     private var footer: some View {
         VStack(alignment: .leading, spacing: 6) {
-            metaLine.frame(maxWidth: .infinity, alignment: .leading).momentsTip(row.detail.momentRows, shown: $tipShown)
+            metaLine.frame(maxWidth: .infinity, alignment: .leading)
+                .tooltip { MomentsCard(moments: row.detail.momentRows) }
             if let load = row.load { LoadGauges(load: load) }
         }
     }

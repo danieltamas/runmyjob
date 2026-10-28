@@ -152,23 +152,19 @@ private struct SwitchTrack: View {
     }
 }
 
-/// Reports whether the pointer is over the view behind which it sits, from an AppKit tracking area. SwiftUI's own hover
-/// is lost whenever the view is rebuilt under a resting pointer (every poll rebuilds the rows) and in a panel that is not
-/// the key window; a tracking area lives with its NSView, which SwiftUI keeps.
-struct HoverRegion: NSViewRepresentable {
-    @Binding var inside: Bool
+/// A tooltip: while the pointer rests on the view it is attached to, `tip` hangs under it in a window of its own, so no card
+/// below can cover it and no scroll view can clip it. The hover comes from an AppKit tracking area, which lives with its
+/// NSView; SwiftUI's own hover is dropped whenever a row is rebuilt under a resting pointer.
+private struct TooltipRegion<Tip: View>: NSViewRepresentable {
+    let tip: Tip
 
-    func makeNSView(context: Context) -> Tracker {
-        let view = Tracker()
-        view.onChange = { inside = $0 }
-        return view
-    }
-
-    func updateNSView(_ view: Tracker, context: Context) { view.onChange = { inside = $0 } }
+    func makeNSView(context: Context) -> Tracker { Tracker() }
+    func updateNSView(_ view: Tracker, context: Context) { view.tip = AnyView(tip) }
 
     final class Tracker: NSView {
-        var onChange: (Bool) -> Void = { _ in }
+        var tip = AnyView(EmptyView())
         private var area: NSTrackingArea?
+        private var panel: NSPanel?
 
         /// Clicks and drags go to the views in front of it.
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -181,7 +177,48 @@ struct HoverRegion: NSViewRepresentable {
             area = fresh
         }
 
-        override func mouseEntered(with event: NSEvent) { onChange(true) }
-        override func mouseExited(with event: NSEvent) { onChange(false) }
+        override func viewWillMove(toWindow newWindow: NSWindow?) {
+            if newWindow == nil { hide() }
+        }
+
+        override func mouseEntered(with event: NSEvent) { show() }
+        override func mouseExited(with event: NSEvent) { hide() }
+
+        private func show() {
+            guard panel == nil, let window else { return }
+            let host = NSHostingView(rootView: tip)
+            let size = host.fittingSize
+            let anchor = window.convertToScreen(convert(bounds, to: nil))
+            let visible = (window.screen ?? NSScreen.main)?.visibleFrame ?? anchor
+            var origin = CGPoint(x: anchor.minX + 12, y: anchor.minY - size.height - 4)
+            if origin.y < visible.minY { origin.y = anchor.maxY + 4 }
+            origin.x = min(max(origin.x, visible.minX + 4), visible.maxX - size.width - 4)
+            let tooltip = NSPanel(contentRect: CGRect(origin: origin, size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            tooltip.contentView = host
+            tooltip.isOpaque = false
+            tooltip.backgroundColor = .clear
+            tooltip.hasShadow = false
+            tooltip.ignoresMouseEvents = true
+            tooltip.level = window.level
+            tooltip.alphaValue = 0
+            window.addChildWindow(tooltip, ordered: .above)
+            tooltip.orderFront(nil)
+            NSAnimationContext.runAnimationGroup { $0.duration = 0.12; tooltip.animator().alphaValue = 1 }
+            panel = tooltip
+        }
+
+        private func hide() {
+            guard let tooltip = panel else { return }
+            panel = nil
+            tooltip.parent?.removeChildWindow(tooltip)
+            tooltip.orderOut(nil)
+        }
+    }
+}
+
+extension View {
+    /// Shows `tip` under this view while the pointer is on it.
+    func tooltip(@ViewBuilder _ tip: () -> some View) -> some View {
+        contentShape(Rectangle()).background(TooltipRegion(tip: tip()))
     }
 }

@@ -96,43 +96,24 @@ struct JobExpansion: View {
     }
 }
 
-/// A card of when the run happened, shown under whatever the pointer rests on. Not a system tooltip: the panel is a
-/// non-activating window and those appear late or never there.
-private struct MomentsTip: ViewModifier {
+/// When the run happened: queued, started, ended and the box's own clock, one line each.
+struct MomentsCard: View {
     let moments: [JobRowPresentation.Detail.Moment]
-    @Binding var shown: Bool
 
-    func body(content: Content) -> some View {
-        content
-            .contentShape(Rectangle())
-            .background(HoverRegion(inside: $shown))
-            .overlay(alignment: .topLeading) {
-                if shown, !moments.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(moments, id: \.label) { moment in
-                            HStack(spacing: 10) {
-                                Text(moment.label).foregroundStyle(Theme.textTertiary).frame(width: 62, alignment: .leading)
-                                Text(moment.value).foregroundStyle(Theme.textPrimary)
-                            }
-                        }
-                    }
-                    .font(.system(size: 10.5, design: .monospaced)).lineLimit(1).fixedSize()
-                    .padding(.horizontal, 10).padding(.vertical, 8)
-                    .background(Theme.canvas, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 0.5))
-                    .shadow(color: .black.opacity(0.4), radius: 10, y: 4)
-                    .offset(y: 20)
-                    .transition(.opacity.combined(with: .offset(y: -4)))
-                    .allowsHitTesting(false)
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(moments, id: \.label) { moment in
+                HStack(spacing: 10) {
+                    Text(moment.label).foregroundStyle(Theme.textTertiary).frame(width: 62, alignment: .leading)
+                    Text(moment.value).foregroundStyle(Theme.textPrimary)
                 }
             }
-            .animation(Motion.snappy, value: shown)
-    }
-}
-
-extension View {
-    /// Shows the moments of a run in a card under this view while the pointer is on it.
-    func momentsTip(_ moments: [JobRowPresentation.Detail.Moment], shown: Binding<Bool>) -> some View {
-        modifier(MomentsTip(moments: moments, shown: shown))
+        }
+        .font(.system(size: 10.5, design: .monospaced)).lineLimit(1).fixedSize()
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(Theme.canvas, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.4), radius: 8, y: 3)
+        .padding(10)
     }
 }
