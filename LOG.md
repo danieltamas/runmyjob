@@ -199,3 +199,5 @@
 - The rule editor widened the panel: Up/Down are icon-only; `RuleEditorLayoutTests` pins the width at 404 pt.
 - GitHub rows had a Log button but nothing ever archived a GitHub job log: the button now runs `gh run view --job <id> --log` into `~/.rmj/logs/<id>.log` (redacted, capped). Archiving on completion for failed jobs (PLAN.md) is still open.
 - Evidence: 317 tests pass, `scripts/check.sh` ok.
+- Failed GitHub jobs are now archived automatically by the app's background loop (3 per round, once per job; a failed fetch stays pending). 317 tests, check ok.
+- Machine cleanup (agent-os, uncommitted there): `rx` is a forwarder to `rmj run`; the old build guard and its tests are gone; CANON and rules/remote-build.md point at RMJ. Open: `rmj hooks install claude-code` (owner), then debug.

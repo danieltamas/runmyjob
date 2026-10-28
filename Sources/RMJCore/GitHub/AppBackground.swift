@@ -38,6 +38,7 @@ public actor AppBackground {
                         githubPolledAt = Date()
                         due[name] = Date().addingTimeInterval(result.rateLimited ? GitHubPoller.idleInterval : (try? await poller.interval(for: name)) ?? GitHubPoller.idleInterval)
                     }
+                    await archiveFailedLogs(ledger: context.ledger, archive: context.archive, tokens: GitHubCommand.orgTokens(rules: rules, home: home))
                     footerNote = await poller.rateLimitedUntil() != nil ? await poller.footer() : nil
                 }
                 let live = ((try? await context.ledger.jobs()) ?? []).contains { !$0.state.isSettled && $0.github == nil }
@@ -50,6 +51,17 @@ public actor AppBackground {
                 }
             }
             try? await Task.sleep(for: .seconds(5))
+        }
+    }
+
+    /// A failed GitHub job's log is archived once, as soon as it is seen; a fetch that failed leaves a pending entry and is not retried here.
+    private func archiveFailedLogs(ledger: Ledger, archive: LogArchive, tokens: @escaping @Sendable (String) -> String?) async {
+        let failed = ((try? await ledger.jobs()) ?? []).filter { $0.github != nil && $0.state == .failed }.prefix(50)
+        var fetched = 0
+        for job in failed where fetched < 3 {
+            if (try? await archive.entry(jobID: job.id, side: "local")) != nil { continue }
+            fetched += 1
+            _ = await GitHubJobLog.archive(ledgerID: job.id, ledger: ledger, archive: archive, secrets: [], token: tokens)
         }
     }
 }
