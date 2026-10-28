@@ -502,14 +502,17 @@ struct Collapsible<Content: View>: View {
     @ViewBuilder let content: Content
     @State private var height: CGFloat = 0
     @State private var mounted: Bool
+    private let keepMounted: Bool
 
-    init(open: Bool, @ViewBuilder content: () -> Content) {
+    /// `lazy`: closed content is not built at all, so a long list of closed rows costs one row each (it stays mounted while it
+    /// closes). A short list passes false: the content is always measured, so a tap starts the motion in the same frame.
+    init(open: Bool, lazy: Bool = true, @ViewBuilder content: () -> Content) {
         self.open = open
         self.content = content()
-        _mounted = State(initialValue: open)
+        _mounted = State(initialValue: open || !lazy)
+        keepMounted = !lazy
     }
 
-    /// Closed content is not built at all, so a long list of closed rows costs one row each; it stays mounted while it closes.
     var body: some View {
         Group {
             if mounted {
@@ -527,6 +530,7 @@ struct Collapsible<Content: View>: View {
         }
         .onChange(of: open) { _, now in
             if now { mounted = true; return }
+            guard !keepMounted else { return }
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(350))
                 if !open { mounted = false; height = 0 }

@@ -32,7 +32,7 @@ struct DestinationCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 header
                 summary.padding(.top, 7)
-                Collapsible(open: open) { details.padding(.top, 7) }
+                Collapsible(open: open, lazy: false) { details.padding(.top, 7) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
