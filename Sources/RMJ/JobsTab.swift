@@ -177,7 +177,7 @@ struct JobRowView: View {
     /// How it is going or how it went; a run on this Mac adds its processor and memory.
     private var footer: some View {
         VStack(alignment: .leading, spacing: 6) {
-            metaLine
+            metaLine.frame(maxWidth: .infinity, alignment: .leading).momentsTip(row.detail.momentRows, shown: $tipShown)
             if let load = row.load { LoadGauges(load: load) }
         }
     }
@@ -190,7 +190,6 @@ struct JobRowView: View {
         .font(.system(size: 11, design: .default).monospacedDigit())
         .lineLimit(expanded || row.state == .queued ? nil : 2).truncationMode(.tail)
         .fixedSize(horizontal: false, vertical: true)
-        .momentsTip(row.detail.momentRows, shown: $tipShown)
     }
 
     private var actions: some View {

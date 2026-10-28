@@ -105,9 +105,15 @@ private struct MomentsTip: ViewModifier {
     func body(content: Content) -> some View {
         content
             .contentShape(Rectangle())
-            .onHover { inside in
+            // Continuous: a plain enter/exit hover is missed in a panel that is not the key window.
+            .onContinuousHover { phase in
                 guard !moments.isEmpty else { return }
-                withAnimation(Motion.snappy) { shown = inside }
+                let inside: Bool
+                switch phase {
+                case .active: inside = true
+                case .ended: inside = false
+                }
+                if inside != shown { withAnimation(Motion.snappy) { shown = inside } }
             }
             .overlay(alignment: .topLeading) {
                 if shown {
@@ -121,7 +127,7 @@ private struct MomentsTip: ViewModifier {
                     }
                     .font(.system(size: 10.5, design: .monospaced)).lineLimit(1).fixedSize()
                     .padding(.horizontal, 10).padding(.vertical, 8)
-                    .background(Theme.shell, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .background(Theme.canvas, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 0.5))
                     .shadow(color: .black.opacity(0.4), radius: 10, y: 4)
                     .offset(y: 20)
