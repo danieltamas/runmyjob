@@ -34,6 +34,7 @@ final class PanelModel: ObservableObject {
     private var githubPolledAt: Date?
     private var boxesPolledAt: Date?
     private var probing = false
+    private var orphansSettledAt: Date?
     private let background = AppBackground()
     private var backgroundLoop: Task<Void, Never>?
     /// A route to explain, set by `Explain route` on a row.
@@ -118,6 +119,10 @@ final class PanelModel: ObservableObject {
         loop = Task { [weak self] in
             while !Task.isCancelled {
                 // `tailscale status` is a child process: read it every 30 s while nothing runs, every 10 s while a job does.
+                if Date().timeIntervalSince(self?.orphansSettledAt ?? .distantPast) >= 30 {
+                    self?.orphansSettledAt = Date()
+                    await loader.settleOrphans()
+                }
                 let state = await monitor.current(maxAge: (self?.snapshot.runningCount ?? 0) > 0 ? 10 : 30)
                 self?.probeBoxesInBackground(loader: loader, tailnet: state)
                 if let snapshot = try? await loader.snapshot(tailnet: state, probes: self?.probes ?? [:], runners: self?.runners ?? [:], registrations: self?.registrations ?? [:]) {

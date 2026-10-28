@@ -42,7 +42,7 @@ echo "perf: idle $quiet% over ${idle}s (budget 0.3%)"
 job=$!
 sleep 3
 streaming=$(average "$pid" 60)
-kill "$job" 2>/dev/null || true
+wait "$job" 2>/dev/null || true  # the job ends on its own: killing the client would orphan its ledger row
 echo "perf: streaming $streaming% over 60s (budget 2%)"
 
 awk -v q="$quiet" -v s="$streaming" 'BEGIN { exit (q < 0.3 && s < 2.0) ? 0 : 1 }' || { echo "perf: over budget" >&2; exit 1; }

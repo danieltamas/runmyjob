@@ -44,11 +44,29 @@ public struct Reconciler: Sendable {
         self.now = now
     }
 
-    /// Looks at every unsettled box job. Returns the ids that changed state.
+    /// A local row this old whose client is gone is lost: the client records itself as soon as the row exists.
+    public static let localGrace: TimeInterval = 60
+
+    /// Settles the open local rows whose client is gone. Reads no box, so the app can run it too.
+    @discardableResult
+    public static func settleLocal(ledger: Ledger, archive: LogArchive, now: Date = Date()) async -> [String] {
+        var changed = [String]()
+        let open = (try? await ledger.jobs(in: [.queued, .syncing, .running])) ?? []
+        for job in open where job.location == "local" && job.github == nil && now.timeIntervalSince(job.queuedAt) > localGrace
+            && LocalClient.isGone(job.id, in: archive.directory) {
+            if (try? await ledger.advance(job.id, to: .lost, at: now, detail: "client stopped before the command finished")) == true {
+                changed.append(job.id)
+            }
+        }
+        return changed
+    }
+
+    /// Looks at every unsettled job. Returns the ids that changed state.
     @discardableResult
     public func reconcile() async -> [String] {
         var changed = [String]()
         let open = (try? await ledger.jobs(in: [.queued, .syncing, .running, .lost])) ?? []
+        changed += await Self.settleLocal(ledger: ledger, archive: archive, now: now())
         // GitHub rows are GitHub's to settle: a box being unreachable never changes their state.
         for job in open where job.location != "local" && job.location != "github-hosted" && job.github == nil {
             guard let destination = job.destination else { continue }

@@ -238,6 +238,8 @@ public struct RunEngine: Sendable {
     // MARK: local
 
     private func runLocal(_ id: String, _ request: RunRequest, began: ContinuousClock.Instant) async -> RunResult {
+        LocalClient.record(id, in: archive.directory)
+        defer { LocalClient.clear(id, in: archive.directory) }
         _ = try? await advance(id, .running) { $0.startedAt = now() }
         let pump = OutputPump(writer: try? archive.writer(jobID: id, side: "mac", secrets: secrets), output: output, secrets: secrets)
         var status: Int32 = 127

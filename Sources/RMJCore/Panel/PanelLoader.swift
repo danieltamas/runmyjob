@@ -10,12 +10,18 @@ public struct PanelLoader: Sendable {
 
     public let home: RMJHome
     private let ledger: Ledger
+    private let archive: LogArchive
 
     public init(home: RMJHome = RMJHome()) throws {
         self.home = home
         try home.prepare()
-        ledger = Ledger(database: try Database(url: home.url.appendingPathComponent("rmj.sqlite")))
+        let database = try Database(url: home.url.appendingPathComponent("rmj.sqlite"))
+        ledger = Ledger(database: database)
+        archive = LogArchive(database: database, directory: home.url.appendingPathComponent("logs"))
     }
+
+    /// Settles local rows whose `rmj run` client is gone. The one write the panel makes; it reads no box.
+    public func settleOrphans() async { await Reconciler.settleLocal(ledger: ledger, archive: archive) }
 
     public func snapshot(tailnet: TailnetState, now: Date = Date(), unseenFailure: Bool = false,
                          probes: [String: DestinationProbeResult] = [:], runners: [String: [RunnerContainer]] = [:],
