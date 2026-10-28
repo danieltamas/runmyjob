@@ -93,8 +93,8 @@ struct JobRowView: View {
                 contextLine
                 commandWell
                 footer
-                if !row.actions.isEmpty { actions }
-                Collapsible(open: expanded) { Expansion(row: row, model: model).padding(.top, 2) }
+                if !row.actions.isEmpty, !expanded { actions }
+                Collapsible(open: expanded) { JobExpansion(row: row, model: model).padding(.top, 2) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -178,88 +178,6 @@ struct JobRowView: View {
             }
         }
         .padding(.top, 2)
-    }
-}
-
-/// The rest of a row once opened: where the time went, what rule applied, the end of the log and the actions.
-private struct Expansion: View {
-    let row: JobRowPresentation
-    @ObservedObject var model: PanelModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Rectangle().fill(Theme.hairline).frame(height: 0.5).padding(.vertical, 2)
-            timeline
-            ForEach(row.detail.timestamps, id: \.self) { stamp in
-                let parts = stamp.split(separator: " ", maxSplits: 1).map(String.init)
-                fact(parts.first ?? "", parts.dropFirst().first ?? "")
-            }
-            if let rule = row.detail.rule { fact("rule", rule) }
-            if let reason = row.detail.reason, !row.meta.contains(where: { $0.text == "local: \(reason)" }) { fact("fallback", reason) }
-            if let session = row.detail.session { fact("session", session) }
-            fact("job", row.id)
-            logTail
-            buttons
-        }
-    }
-
-    @ViewBuilder
-    private var timeline: some View {
-        let segments = row.detail.timeline
-        let total = max(1, segments.reduce(0) { $0 + $1.seconds })
-        if !segments.isEmpty {
-            VStack(alignment: .leading, spacing: 3) {
-                GeometryReader { proxy in
-                    HStack(spacing: 2) {
-                        ForEach(segments, id: \.label) { segment in
-                            Capsule().fill(color(segment.label)).frame(width: max(4, proxy.size.width * segment.seconds / total))
-                        }
-                    }
-                }
-                .frame(height: 5)
-                Text(segments.map { "\($0.label) \(PanelFormat.duration($0.seconds))" }.joined(separator: "  \u{00B7}  ")).font(.meta).foregroundStyle(Theme.textTertiary)
-            }
-        }
-    }
-
-    private func color(_ label: String) -> Color {
-        label == "queued" ? Theme.unknown : label == "sync" ? Theme.warn : Theme.running
-    }
-
-    private func fact(_ label: String, _ value: String) -> some View {
-        HStack(alignment: .top, spacing: 6) {
-            Text(label).foregroundStyle(Theme.textTertiary).frame(width: 58, alignment: .leading)
-            Text(value).foregroundStyle(Theme.textSecondary).textSelection(.enabled)
-        }
-        .font(.system(size: 10.5)).fixedSize(horizontal: false, vertical: true)
-    }
-
-    @ViewBuilder
-    private var logTail: some View {
-        switch model.tails[row.id] {
-        case .lines(let lines) where !lines.isEmpty:
-            Text(lines.joined(separator: "\n")).font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.textSecondary)
-                .lineLimit(40).frame(maxWidth: .infinity, alignment: .leading).padding(8)
-                .background(Theme.canvas.opacity(0.6), in: RoundedRectangle(cornerRadius: 8, style: .continuous)).textSelection(.enabled)
-        case .lines:
-            Text("The log is empty so far.").font(.meta).foregroundStyle(Theme.textTertiary)
-        case .note(let note):
-            Text("log: \(note)").font(.meta).foregroundStyle(Theme.textTertiary)
-        case nil:
-            EmptyView()
-        }
-    }
-
-    private var buttons: some View {
-        HStack(spacing: 8) {
-            ChipButton(title: "Open log") { JobActions.perform(.log, on: row, model: model) }
-            if row.detail.canCancel {
-                ChipButton(title: "Cancel", destructive: true) { JobActions.cancel(row, model: model) }
-            }
-            if row.state.isSettledOrLost { ChipButton(title: "Rerun") { JobActions.perform(.rerun, on: row, model: model) } }
-            if let url = row.detail.url { ChipButton(title: "Open on GitHub") { NSWorkspace.shared.open(url) } }
-            if !row.detail.isGitHub { ChipButton(title: "Explain route") { JobActions.explain(row, model: model) } }
-        }
     }
 }
 

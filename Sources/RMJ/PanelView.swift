@@ -66,35 +66,44 @@ struct PanelView: View {
         .padding(.horizontal, 14).padding(.top, 14).padding(.bottom, 10)
     }
 
+    /// Every tab is a segment of the island. The open tab takes a wider share and shows its name; the others split the rest
+    /// evenly, so the island is even whatever the number of tabs.
     private var tabIsland: some View {
-        HStack(spacing: 2) {
-            ForEach(PanelTab.allCases) { tab in
-                let active = model.tab == tab
-                Button { model.select(tab) } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: tab.symbol).font(.system(size: 13, weight: .medium))
-                        if active { Text(tab.rawValue).font(.system(size: 12.5, weight: .semibold)).lineLimit(1) }
-                        badge(tab, active: active)
-                    }
-                    .fixedSize()
-                    .padding(.horizontal, 12).padding(.vertical, 7)
-                    .frame(maxWidth: active ? nil : .infinity)
-                    .foregroundStyle(active ? Theme.teal : Theme.textSecondary)
-                    .background {
-                        if active {
-                            Capsule().fill(Theme.teal.opacity(0.14))
-                                .overlay(CapsuleRing(width: 0.75).fill(Theme.teal.opacity(0.5), style: FillStyle(eoFill: true)))
-                                .shadow(color: Theme.teal.opacity(0.25), radius: 8)
-                                .matchedGeometryEffect(id: "active-tab", in: tabSpace)
+        let tabs = Array(PanelTab.allCases)
+        let open = 1.5
+        return GeometryReader { proxy in
+            let spacing: CGFloat = 2
+            let free = proxy.size.width - spacing * CGFloat(tabs.count - 1)
+            let unit = free / (CGFloat(tabs.count - 1) + open)
+            HStack(spacing: spacing) {
+                ForEach(tabs) { tab in
+                    let active = model.tab == tab
+                    Button { model.select(tab) } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: tab.symbol).font(.system(size: 13, weight: .medium))
+                            if active { Text(tab.rawValue).font(.system(size: 12.5, weight: .semibold)).lineLimit(1) }
+                            badge(tab, active: active)
                         }
+                        .fixedSize()
+                        .frame(width: active ? unit * open : unit, height: proxy.size.height)
+                        .foregroundStyle(active ? Theme.teal : Theme.textSecondary)
+                        .background {
+                            if active {
+                                Capsule().fill(Theme.teal.opacity(0.14))
+                                    .overlay(CapsuleRing(width: 0.75).fill(Theme.teal.opacity(0.5), style: FillStyle(eoFill: true)))
+                                    .shadow(color: Theme.teal.opacity(0.25), radius: 8)
+                                    .matchedGeometryEffect(id: "active-tab", in: tabSpace)
+                            }
+                        }
+                        .contentShape(Capsule())
                     }
-                    .contentShape(Capsule())
+                    .buttonStyle(PressStyle(scale: 0.97, hit: AnyShape(Capsule()), lift: 0.08))
+                    .help(tab.rawValue)
+                    .accessibilityLabel(tab.rawValue)
                 }
-                .buttonStyle(PressStyle(scale: 0.97, hit: AnyShape(Capsule()), lift: 0.08))
-                .help(tab.rawValue)
-                .accessibilityLabel(tab.rawValue)
             }
         }
+        .frame(height: 34)
         // Only the island animates; the tab's content swaps at once instead of riding the spring.
         .animation(Motion.spring, value: model.tab)
         .padding(3)
