@@ -5,7 +5,7 @@ import SwiftUI
 /// The rest of a row once opened: where the time went, when it happened, what rule applied and the actions.
 struct JobExpansion: View {
     let row: JobRowPresentation
-    @ObservedObject var model: PanelModel
+    let model: PanelModel
 
     /// `queued 2026-10-25 15:58:20 (mac)` split into its parts; anything else (`clock offset 12 ms`) stays a plain note.
     private struct Stamp {

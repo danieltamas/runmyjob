@@ -24,6 +24,9 @@ final class PanelModel: ObservableObject {
     var showSettingsWindow: (() -> Void)?
     /// Rows the owner opened, by job id: the state lives here so a tab switch does not close them.
     @Published var expanded: Set<String> = []
+    /// Job rows open on their own `@State`; this only lets a row remember it was open when the list is rebuilt. Not published:
+    /// opening one row must not redraw the others.
+    var openJobs: Set<String> = []
     /// The log tail of each opened row, read when it opens.
     @Published var tails: [String: LogTail.Result] = [:]
     /// One line shown in the footer for a few seconds: what an action did or why it did not.

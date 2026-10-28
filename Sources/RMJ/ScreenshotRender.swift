@@ -49,7 +49,7 @@ enum ScreenshotRender {
             routing.tab = .routing
             try write(PanelView(model: routing, height: 1500), to: url("routing"))
             let open = PanelModel(snapshot: DemoShots.snapshot(stress: stress))
-            open.expanded = ["rx-failed", "gh-queued"]
+            open.openJobs = ["rx-failed", "gh-queued"]
             try write(PanelView(model: open, height: 1800), to: url("jobs-open"))
             var down = DemoShots.snapshot(stress: stress)
             down.tailnet = DemoShots.tailnet(standing: .stopped)

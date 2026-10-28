@@ -21,9 +21,7 @@ struct JobsTab: View {
                 ForEach(RowPaging.page(sections, limit: shown), id: \.0) { section, rows in
                     Eyebrow(text: "\(section.rawValue) - \(sections.first { $0.0 == section }?.1.count ?? rows.count)").padding(.top, 6).padding(.leading, 4)
                     ForEach(rows, id: \.id) { row in
-                        JobRowView(row: row, expanded: model.expanded.contains(row.id), model: model) {
-                            withAnimation(Motion.snappy) { model.toggle(row.id) }
-                        }
+                        JobRowHost(row: row, model: model)
                     }
                 }
                 let settled = RowPaging.total(sections)
@@ -75,6 +73,26 @@ extension JobRowPresentation.Agent {
         case .hermes: "Hermes"
         case .github: "GitHub"
         case .terminal: "terminal"
+        }
+    }
+}
+
+/// Holds the open state of one row, so opening it redraws that row alone, not the list.
+struct JobRowHost: View {
+    let row: JobRowPresentation
+    let model: PanelModel
+    @State private var expanded: Bool
+
+    init(row: JobRowPresentation, model: PanelModel) {
+        self.row = row
+        self.model = model
+        _expanded = State(initialValue: model.openJobs.contains(row.id))
+    }
+
+    var body: some View {
+        JobRowView(row: row, expanded: expanded, model: model) {
+            withAnimation(Motion.snappy) { expanded.toggle() }
+            if expanded { model.openJobs.insert(row.id) } else { model.openJobs.remove(row.id) }
         }
     }
 }
