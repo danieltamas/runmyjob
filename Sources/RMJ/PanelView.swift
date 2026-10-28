@@ -111,7 +111,6 @@ struct PanelView: View {
         case .jobs: model.snapshot.runningCount + model.snapshot.queuedCount
         case .destinations: model.snapshot.destinations.count
         case .routing: model.snapshot.rulesState?.rules?.rules.count ?? 0
-        case .history: model.snapshot.history.count
         }
         if count > 0 {
             Text("\(count)").font(.system(size: 10.5, weight: .bold).monospacedDigit())
@@ -127,7 +126,6 @@ struct PanelView: View {
         case .jobs: JobsTab(model: model)
         case .destinations: DestinationsTab(model: model)
         case .routing: RoutingTab(model: model)
-        case .history: HistoryTab(model: model)
         }
     }
 
@@ -139,7 +137,7 @@ struct PanelView: View {
             } else {
             HStack(spacing: 10) {
                 ForEach(footer.polls, id: \.self) { Text($0).font(.meta).foregroundStyle(Theme.textTertiary).lineLimit(1) }
-                    .help("GitHub is polled every 15 s while a job is queued or running and every 120 s otherwise; boxes every 30 s")
+                    .help("GitHub is polled every 15 s while a job is queued or running and every 120 s (300 s for quiet repos) otherwise; boxes every 30 s")
                 if let budget = footer.rateBudget { Text(budget).font(.meta).foregroundStyle(Theme.warn).lineLimit(1) }
             }
             }

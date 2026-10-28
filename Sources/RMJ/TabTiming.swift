@@ -16,7 +16,7 @@ enum TabTiming {
         window.contentView = host
         settle(host)
         let rounds = Int(ProcessInfo.processInfo.environment["RMJ_TAB_ROUNDS"] ?? "") ?? 1
-        for tab in Array(repeating: [PanelTab.destinations, .routing, .history, .jobs, .history, .routing], count: rounds).flatMap({ $0 }) {
+        for tab in Array(repeating: [PanelTab.destinations, .routing, .jobs, .destinations, .routing], count: rounds).flatMap({ $0 }) {
             let began = ContinuousClock.now
             withAnimation(nil) { model.select(tab) }
             settle(host)

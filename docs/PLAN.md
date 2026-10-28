@@ -44,7 +44,7 @@ Companion specs (each is part of this plan; where they disagree, this file wins)
 
 On this Mac, with the tailnet up: `rmj run -- cargo check` in the axon checkout runs on
 `ai-eu-1`; the panel shows it running with a live elapsed time, the age of its last output
-line and the log tail; after it ends the History tab and `rmj jobs --json` carry the row with
+line and the log tail; after it ends the Jobs tab (30 days, searchable) and `rmj jobs --json` carry the row with
 queued, sync, start and end timestamps (the container's own, with provenance), the exit code, the
 destination, the rule, and the log kept locally. A atlas pull request's `check` job appears in
 the same Jobs list while it runs on the self-hosted runner, with its current step, its queue wait
@@ -343,7 +343,7 @@ with a complete ledger row, and `$SCRATCH/review-out.md` prints 0 P0-P2.
   and owner (listed once an hour, paginated). With `gh auth token` per call (RMJ stores no token;
   the org runner calls use the Keychain PAT read-only), the poller reads workflow runs and jobs
   (paginated, `per_page=100`, back to 30 days on first run and after any downtime gap) with ETags.
-  Interval 15 s for repos with something queued or running, 120 s otherwise; the panel's footer
+  Interval 15 s for repos with something queued or running, 120 s after a run in the last day, 300 s otherwise; the panel's footer
   states both. A 403 rate limit stops polling until `X-RateLimit-Reset` and the panel says so.
 - Per job attempt (run id, job id, `run_attempt`): GitHub's `status` and `conclusion` as given
   (`success`, `failure`, `cancelled`, `skipped`, `timed_out`, `action_required`, `neutral`), the
@@ -466,7 +466,7 @@ owner approves the renders (recorded in LOG.md), and `$SCRATCH/review-out.md` pr
 Acceptance:
 - With `cold_marker: {"acme/atlas": "Compiling libduckdb-sys"}`, the atlas run whose
   log contains it is `cold`, the others `warm`; an axon run under the same rule is `unknown`.
-- `rmj jobs --repo atlas --state failed --since 7d` and the History filter give the same rows.
+- `rmj jobs --repo atlas --state failed --since 7d` and the Jobs tab's search and filter chips give the same rows.
 
 /goal: the U8 tests pass and the owner approves the renders.
 

@@ -60,7 +60,7 @@ flowchart LR
   checked against GitHub. Nothing is installed on the box beyond what runs in docker.
 - **Destinations you can see.** OS, memory and disk of every tailnet machine, refreshed every five
   minutes; runners online, busy or unregistered; images; a stale registration gets a prune button.
-- **History for 30 days.** Durations, waits and their reasons, local fallbacks, a failed run's log
+- **One list, 30 days, searchable.** Durations, waits and their reasons, local fallbacks, a failed run's log
   pulled the moment it fails, a rerun button.
 - **Local always works.** No box, no tailnet, a failed sync: the command runs on your Mac and the
   ledger says why. A red test suite is never a reason to fall back.
@@ -113,7 +113,7 @@ installs (`install.sh`) arrive with the first signed release.
 
 ## First run
 
-1. Open RMJ from the menu bar. The tab bar shows Jobs, Destinations, Routing and History.
+1. Open RMJ from the menu bar. The tab bar shows Jobs, Destinations and Routing.
 2. **Destinations:** Settings > Destinations, press "Add as destination" on a Linux box, name it,
    pick its company (tenant). RMJ asks for a GitHub token once per GitHub owner, stores it in your
    Keychain and sets the box up. Run it again any time: it only changes what differs.

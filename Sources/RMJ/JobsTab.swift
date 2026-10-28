@@ -4,14 +4,20 @@ import SwiftUI
 struct JobsTab: View {
     @ObservedObject var model: PanelModel
     @State private var shown = RowPaging.pageSize
+    @State private var filter = JobRowFilter()
 
     var body: some View {
-        let sections = model.snapshot.rows
-        if sections.isEmpty {
+        let all = model.snapshot.allRows
+        if all.isEmpty {
             EmptyState(symbol: "bolt.horizontal", title: "No jobs yet",
                        detail: "Agents' cargo test and just check land here once the hook is installed (Settings > Hooks).")
         } else {
+            let sections = filter.apply(all)
             VStack(alignment: .leading, spacing: 8) {
+                filterBar
+                if sections.isEmpty {
+                    EmptyState(symbol: "magnifyingglass", title: "Nothing matches", detail: "No job of the last thirty days fits this search.")
+                }
                 ForEach(RowPaging.page(sections, limit: shown), id: \.0) { section, rows in
                     Eyebrow(text: "\(section.rawValue) - \(sections.first { $0.0 == section }?.1.count ?? rows.count)").padding(.top, 6).padding(.leading, 4)
                     ForEach(rows, id: \.id) { row in
@@ -26,6 +32,23 @@ struct JobsTab: View {
                         shown += RowPaging.pageSize
                     }
                     .frame(maxWidth: .infinity)
+                }
+            }
+            .onChange(of: filter) { _, _ in shown = RowPaging.pageSize }
+        }
+    }
+
+    /// Search over the thirty days, and one outcome or origin at a time.
+    private var filterBar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            GlassField(placeholder: "Search repo, command, branch, box", text: $filter.query)
+            HStack(spacing: 6) {
+                ForEach(JobRowFilter.Kind.allCases, id: \.self) { kind in
+                    let on = filter.kind == kind
+                    Button { filter.kind = kind } label: {
+                        Chip(text: kind.rawValue, color: on ? Theme.teal : Theme.textSecondary, style: on ? .tinted : .outline)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }

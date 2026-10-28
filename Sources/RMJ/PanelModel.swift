@@ -2,7 +2,7 @@ import RMJCore
 import SwiftUI
 
 enum PanelTab: String, CaseIterable, Identifiable {
-    case jobs = "Jobs", destinations = "Destinations", routing = "Routing", history = "History"
+    case jobs = "Jobs", destinations = "Destinations", routing = "Routing"
     var id: String { rawValue }
 
     var symbol: String {
@@ -10,7 +10,6 @@ enum PanelTab: String, CaseIterable, Identifiable {
         case .jobs: "bolt.horizontal"
         case .destinations: "server.rack"
         case .routing: "arrow.triangle.branch"
-        case .history: "clock.arrow.circlepath"
         }
     }
 }

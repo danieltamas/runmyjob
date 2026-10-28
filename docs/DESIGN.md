@@ -37,7 +37,7 @@ been opened or the notification acted on), tailnet down (a slash through the gly
 1. **Header**: the app glyph, "RMJ", the tailnet chip (`tailnet up`, `relayed`, `tailnet down`,
    `no client`, `key expires in 3 d`), the count of running jobs, an update arrow when a newer
    release is out, a gear that opens Settings.
-2. **Tab island**: Jobs, Destinations, Routing, History. Badges: Jobs shows running plus queued in
+2. **Tab island**: Jobs, Destinations, Routing. Badges: Jobs shows running plus queued in
    `running`; a failed job not yet seen adds a `crit` dot.
 3. **Content**, scrolls; cards in a `RowStack`.
 4. **Footer**: last poll age per source (`GitHub 12s`, `boxes 30s`, with the active and idle
@@ -56,7 +56,9 @@ one truncated line in the row's meta.
 
 ## Jobs
 
-Sections: Running, Queued, Recent (today, then yesterday; History holds the rest).
+Sections: Running, Queued, Today, Yesterday, Earlier: one list over the 30 days of the ledger, 25 rows at a time. A search field
+(every word must appear in the repo, command, branch, worktree, commit, destination, state or id) and one chip of
+All, Failed, Done, GitHub or Local narrow it; there is no separate History tab.
 
 A row, two lines plus meta:
 - Line 1: repo name (title), the location chip with the tenant colour (`ai-eu-1`, `local`,
@@ -134,14 +136,6 @@ resolved, worktree, command words, files checked, tailnet state and age, each de
 probe age), then the chain line by line (`ai-eu-1: online 20s ago, 1/3 slots, 14/36 GB,
 rule "cargo repos" -> chosen`), every skipped destination with its reason, the matched rule, and
 the result.
-
-## History
-
-A 30-day strip of days at the top (jobs per day as small bars by state), a filter row
-(destination, repo, state, source, agent), then sortable rows grouped by day with duration and
-provenance, wait, outcome, location and reason. Per repo summary when a repo is filtered: runs,
-median and last duration, waits, local fallbacks and their reasons, cold runs only when the rule
-has a cold marker.
 
 ## Settings
 

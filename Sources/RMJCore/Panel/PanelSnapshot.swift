@@ -27,6 +27,7 @@ public struct PanelSnapshot: Sendable {
         let lock = NSLock()
         var rows: [(JobRowPresentation.Section, [JobRowPresentation])]?
         var historyRows: [(JobRowPresentation.Section, [JobRowPresentation])]?
+        var allRows: [(JobRowPresentation.Section, [JobRowPresentation])]?
         var cards: [DestinationCardPresentation]?
         var routing: RoutingPresentation?
         var routingBuilt = false
@@ -73,6 +74,10 @@ public struct PanelSnapshot: Sendable {
     }
     public var historyRows: [(JobRowPresentation.Section, [JobRowPresentation])] {
         memo.cached(\.historyRows) { history.panelRows(now: now, lastOutput: [:], waitingFor: [:]) }
+    }
+    /// Live jobs and the thirty days behind them as one list: Running and Queued first, then Today, Yesterday, Earlier.
+    public var allRows: [(JobRowPresentation.Section, [JobRowPresentation])] {
+        memo.cached(\.allRows) { (jobs + history).panelRows(now: now, lastOutput: lastOutput, waitingFor: waitingFor) }
     }
     public var cards: [DestinationCardPresentation] { memo.cached(\.cards) { destinations.map { DestinationCardPresentation($0, now: now) } } }
     public var routing: RoutingPresentation? { memo.routing { rulesState.map { RoutingPresentation(state: $0, jobs: jobs) } } }
