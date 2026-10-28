@@ -202,3 +202,12 @@
 - Failed GitHub jobs are now archived automatically by the app's background loop (3 per round, once per job; a failed fetch stays pending). 317 tests, check ok.
 - Machine cleanup (agent-os, uncommitted there): `rx` is a forwarder to `rmj run`; the old build guard and its tests are gone; CANON and rules/remote-build.md point at RMJ. Open: `rmj hooks install claude-code` (owner), then debug.
 - Idle CPU: the panel loop now beats every 15 s when the panel is closed and nothing runs (5 s open, 1 s running); the failed-log archive runs once a minute. perf.sh 240 s: idle 0.29% (budget 0.3%), streaming 0.40%. The full 600 s run is still to do. `brag-output/` and `runmyjob.mp4` are git-ignored.
+
+## 2026-10-29
+
+- Job card redesign (context line, command well, local CPU/memory gauges), detail with phase bar and property rows, no inline log; one hover tooltip with the run's moments in its own window; even tab island; rows open on their own state; destination and job cards slide open (no fade).
+- Local runs record average CPU and memory (`LoadRecorder`, schema v2: `avg_cpu`, `avg_memory_bytes`); shown on finished rows. Box runs are not measured.
+- Settings > Destinations > Tokens now edits a destination's repo and org targets as well as its PATs.
+- Routing tab: Test your rules first, workflows seen collapsed, tenant deny as a footer.
+- Idle CPU budget relaxed from 0.3% to 0.4% (owner's call); perf.sh 300 s on this build: see the line below.
+- perf.sh 300: perf: idle 0.24% over 300s (budget 0.4%)

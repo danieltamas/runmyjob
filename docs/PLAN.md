@@ -72,7 +72,7 @@ pending in the release notes (decision D6).
    mid-run then reconciled; a box "reboot" (container gone, partial log present); two runs of the
    same worktree in a row (second waits for the lock); a `globex` repo against the Acme
    destination (denied); a rules file with an error (everything local, error shown).
-4. `scripts/perf.sh`: idle CPU of the app under 0.3 percent over 10 minutes with no job running,
+4. `scripts/perf.sh`: idle CPU of the app under 0.4 percent over 10 minutes with no job running,
    under 2 percent with one job streaming.
 5. An MCP smoke test: `rmj mcp` over stdin answers `initialize`, `tools/list`, `destinations`,
    `jobs`, `failures` with valid JSON-RPC matching the schemas in AGENT-API.md, within 500 ms
@@ -563,7 +563,7 @@ appears in Jobs; `rmj run` from a Globex checkout lands on s1 and is denied for 
 - Code: Swift 6 strict concurrency, files under 500 lines, no third-party packages,
   intention-revealing names, comments say why, no dead code, the file's idiom. Acceptance tests
   by Codex; regression tests by the implementer for defects found.
-- Speed: idle CPU under 0.3 percent, under 2 percent while streaming one job; panel opens in under
+- Speed: idle CPU under 0.4 percent, under 2 percent while streaming one job; panel opens in under
   150 ms from the SQLite ledger; the router answers in under 20 ms from cached state; a probe never
   blocks the UI (actors and timeouts).
 - Security (SECURITY.md): ssh only to verified tailnet addresses with the fixed argv; argv

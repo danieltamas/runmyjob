@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CPU cost of the running RMJ app (docs/PLAN.md, "Measured by" step 4): under 0.3 percent of one core over the idle
+# CPU cost of the running RMJ app (docs/PLAN.md, "Measured by" step 4): under 0.4 percent of one core over the idle
 # window with no job running, under 2 percent while one job streams output. Run it with the panel closed.
 #   perf.sh [idle-seconds]   (default 600; the streaming window is 60 s)
 set -euo pipefail
@@ -35,7 +35,7 @@ rmj=${RMJ_CLI:-$HOME/.local/bin/rmj}
 [[ -x $rmj ]] || { echo "perf: $rmj is missing" >&2; exit 2; }
 
 quiet=$(average "$pid" "$idle")
-echo "perf: idle $quiet% over ${idle}s (budget 0.3%)"
+echo "perf: idle $quiet% over ${idle}s (budget 0.4%)"
 
 # One job printing ten lines a second for the whole window, run on this Mac so no box is needed.
 "$rmj" run -- sh -c 'i=0; while [ $i -lt 650 ]; do echo "line $i"; i=$((i+1)); sleep 0.1; done' >/dev/null 2>&1 &
@@ -45,4 +45,4 @@ streaming=$(average "$pid" 60)
 wait "$job" 2>/dev/null || true  # the job ends on its own: killing the client would orphan its ledger row
 echo "perf: streaming $streaming% over 60s (budget 2%)"
 
-awk -v q="$quiet" -v s="$streaming" 'BEGIN { exit (q < 0.3 && s < 2.0) ? 0 : 1 }' || { echo "perf: over budget" >&2; exit 1; }
+awk -v q="$quiet" -v s="$streaming" 'BEGIN { exit (q < 0.4 && s < 2.0) ? 0 : 1 }' || { echo "perf: over budget" >&2; exit 1; }
