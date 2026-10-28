@@ -214,7 +214,13 @@ enum JobActions {
         switch action {
         case .log:
             let url = RMJHome().url.appendingPathComponent("logs/\(row.id).log")
-            if FileManager.default.fileExists(atPath: url.path) { NSWorkspace.shared.open(url) } else { model.say("No archived log for \(row.id) yet.") }
+            if FileManager.default.fileExists(atPath: url.path) { NSWorkspace.shared.open(url) } else if row.detail.isGitHub {
+                model.say("Fetching the log of \(row.title) from GitHub...")
+                Task {
+                    let problem = await GitHubCommand.fetchLog(row.id)
+                    if let problem { model.say(problem) } else { NSWorkspace.shared.open(url); model.say("Opened the log of \(row.title).") }
+                }
+            } else { model.say("No archived log for \(row.id) yet.") }
         case .rerun:
             if row.detail.isGitHub {
                 model.say("Rerunning \(row.title)...")

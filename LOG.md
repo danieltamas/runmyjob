@@ -192,3 +192,10 @@
 - Tests: Codex ported MacMax's two registry suites and added the CONSUMER.md acceptance lines; 304 tests pass unchanged.
 - Release ping and confirmation added as the last step of docs/RELEASE.md (repository name runmyjob). Never run: there is no release to check it against.
 - Docs: README, SECURITY (network), PLAN non-goals, ARCHITECTURE.
+
+## 2026-10-28 - fixes after use
+
+- Local runs whose `rmj run` client died stayed `running`: a client pid file plus a 30 s reconcile now settles them as `lost` after a 60 s grace.
+- The rule editor widened the panel: Up/Down are icon-only; `RuleEditorLayoutTests` pins the width at 404 pt.
+- GitHub rows had a Log button but nothing ever archived a GitHub job log: the button now runs `gh run view --job <id> --log` into `~/.rmj/logs/<id>.log` (redacted, capped). Archiving on completion for failed jobs (PLAN.md) is still open.
+- Evidence: 317 tests pass, `scripts/check.sh` ok.

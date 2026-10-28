@@ -53,6 +53,14 @@ public enum GitHubCommand {
         return 0
     }
 
+    /// Archives one GitHub job's log under `~/.rmj/logs`; the reason it could not be, or nil when it was.
+    public static func fetchLog(_ id: String, environment: [String: String] = ProcessInfo.processInfo.environment) async -> String? {
+        let context: RunCommand.Context
+        do { context = try await RunCommand.open(environment: environment) } catch { return "cannot open the ledger: \(error.localizedDescription)" }
+        let tokens = context.rules.rules.map { orgTokens(rules: $0, home: context.home) } ?? { @Sendable _ in nil }
+        return await GitHubJobLog.archive(ledgerID: id, ledger: context.ledger, archive: context.archive, secrets: [], token: tokens)
+    }
+
     /// Reruns one GitHub job's run; the reason it could not be, or nil when it was.
     public static func rerunJob(_ id: String, environment: [String: String] = ProcessInfo.processInfo.environment) async -> String? {
         let context: RunCommand.Context
