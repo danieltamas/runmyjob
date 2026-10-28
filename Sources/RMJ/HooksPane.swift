@@ -54,16 +54,10 @@ struct HooksPane: View {
     /// Other things on this Mac that look at the same commands, so nothing is a surprise.
     @ViewBuilder private var notes: some View {
         let bton = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "ro.danieltamas.bton") != nil
-        let oldGuard = FileManager.default.fileExists(atPath: NSHomeDirectory() + "/agent-os/hooks/shared/remote-build-guard.sh")
-        if bton || oldGuard {
+        if bton {
             SettingsCard(title: "Found on this Mac") {
                 VStack(alignment: .leading, spacing: 6) {
-                    if bton {
-                        Text("Bton is installed. Its agents are ordinary Claude Code and Codex sessions, so these hooks cover them too. RMJ does not depend on Bton.")
-                    }
-                    if oldGuard {
-                        Text("The older fleet guard from agent-os is installed. It blocks the same commands: once the RMJ hook is on, stop linking the old one.")
-                    }
+                    Text("Bton is installed. Its agents are ordinary Claude Code and Codex sessions, so these hooks cover them too. RMJ does not depend on Bton.")
                 }
                 .font(.meta).foregroundStyle(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
             }
