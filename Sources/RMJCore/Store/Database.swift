@@ -41,10 +41,20 @@ public actor Database {
         connection = Connection(opened)
         sqlite3_busy_timeout(opened, Self.busyTimeoutMS)
         // journal_mode returns a row; it is read, not run as a statement that must be empty.
-        _ = try Self.run(opened, "PRAGMA journal_mode = WAL", [])
+        try Self.enableWAL(opened)
         _ = try Self.run(opened, "PRAGMA synchronous = NORMAL", [])
         _ = try Self.run(opened, "PRAGMA foreign_keys = ON", [])
         try Self.migrate(opened)
+    }
+
+    /// Switching a new file to WAL is the one statement the busy timeout does not cover: a second opener racing the first
+    /// gets SQLITE_BUSY at once, so it asks again until the file is switched.
+    private static func enableWAL(_ db: OpaquePointer) throws {
+        for attempt in 0..<50 {
+            do { _ = try run(db, "PRAGMA journal_mode = WAL", []); return } catch let error as DatabaseError where error.code == SQLITE_BUSY && attempt < 49 {
+                usleep(20_000)
+            }
+        }
     }
 
     /// Rows changed by an INSERT, UPDATE or DELETE.
