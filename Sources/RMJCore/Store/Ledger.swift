@@ -124,6 +124,7 @@ public struct Ledger: Sendable {
             ("ended_at", .optional(Self.ms(patch.endedAt))), ("box_started_at", .optional(Self.ms(patch.boxStartedAt))),
             ("box_ended_at", .optional(Self.ms(patch.boxEndedAt))), ("box_exit", .optional(patch.boxExit.map(Int64.init))),
             ("mac_elapsed_ms", .optional(patch.macElapsedMS.map(Int64.init))), ("clock_offset_ms", .optional(patch.clockOffsetMS.map(Int64.init))),
+            ("avg_cpu", .optional(patch.avgCPU)), ("avg_memory_bytes", .optional(patch.avgMemoryBytes)),
             ("github", .optional(scrub(patch.github))),
         ]
     }
@@ -153,6 +154,8 @@ extension Ledger {
         job.boxExit = int("box_exit")
         job.macElapsedMS = int("mac_elapsed_ms")
         job.clockOffsetMS = int("clock_offset_ms")
+        job.avgCPU = row["avg_cpu"]?.realValue
+        job.avgMemoryBytes = row["avg_memory_bytes"]?.intValue
         job.github = row["github"]?.textValue
         job.tenant = row["tenant"]?.textValue
         job.worktree = row["worktree"]?.textValue

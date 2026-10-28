@@ -243,11 +243,14 @@ public struct RunEngine: Sendable {
         _ = try? await advance(id, .running) { $0.startedAt = now() }
         let pump = OutputPump(writer: try? archive.writer(jobID: id, side: "mac", secrets: secrets), output: output, secrets: secrets)
         var status: Int32 = 127
+        let recorder = LoadRecorder()
+        await recorder.start()
         do {
             status = try await execute(request, output: pump.add)
         } catch {
             notice("rmj: cannot start the command: \(UntrustedText.clean(error.localizedDescription))")
         }
+        let average = await recorder.stop()
         await pump.close()
         await pump.complete()
         let elapsed = began.duration(to: .now)
@@ -255,6 +258,8 @@ public struct RunEngine: Sendable {
         patch.exitCode = Int(status)
         patch.endedAt = now()
         patch.macElapsedMS = Int(elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000)
+        patch.avgCPU = average?.cpuPercent
+        patch.avgMemoryBytes = average?.memoryBytes
         let state: JobState = status == 0 ? .done : .failed
         _ = try? await ledger.advance(id, to: state, at: now(), patch: patch)
         return RunResult(jobID: id, exitCode: status, state: state)

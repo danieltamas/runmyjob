@@ -68,6 +68,8 @@ public struct JobRowPresentation: Sendable, Equatable {
         public let timeline: [Segment]
         /// `queued 14:12:03` and so on, each with its provenance.
         public let timestamps: [String]
+        /// The moments of the run for a tooltip on its length: one line each, the Mac's clock and the box's.
+        public let moments: String
         public let rule: String?
         public let reason: String?
         public let session: String?
@@ -91,6 +93,7 @@ public struct JobRowPresentation: Sendable, Equatable {
                          stamp("box start", job.boxStartedAt, "box"), stamp("box end", job.boxEndedAt, "box")].compactMap { $0 }
             if let offset = job.clockOffsetMS { lines.append("clock offset \(offset) ms") }
             timestamps = lines
+            moments = lines.joined(separator: "\n")
             rule = job.rule
             reason = job.fallbackReason
             session = job.session
@@ -183,16 +186,25 @@ public struct JobRowPresentation: Sendable, Equatable {
             var parts: [Part] = []
             if let (seconds, provenance) = duration(job, info: info) { parts.append(part("\(PanelFormat.duration(seconds)), \(provenance)", .ok)) }
             if job.warmth != "unknown" { parts.append(part(job.warmth)) }
+            parts += averages(job)
             return parts
         case .failed, .lost, .cancelled:
             var parts = [part(outcome(job), .crit)]
             if let (seconds, provenance) = duration(job, info: info) { parts.append(part("\(PanelFormat.duration(seconds)), \(provenance)")) }
+            parts += averages(job)
             if let reason = job.fallbackReason { parts.append(part("local: \(reason)", .local)) }
             if job.environment == "mac" { parts.append(part("environment: mac", .local)) }
             return parts
         case .skipped:
             return [part(info?.conclusion ?? "skipped")]
         }
+    }
+
+    /// What a finished run on this Mac cost on average, when it was measured.
+    static func averages(_ job: JobRecord) -> [Part] {
+        guard let cpu = job.avgCPU, let memory = job.avgMemoryBytes else { return [] }
+        return [Part(text: "avg cpu \(Int(cpu.rounded()))%", tone: .plain),
+                Part(text: "avg mem \(ByteCountFormatter.string(fromByteCount: memory, countStyle: .memory))", tone: .plain)]
     }
 
     static func outcome(_ job: JobRecord) -> String {

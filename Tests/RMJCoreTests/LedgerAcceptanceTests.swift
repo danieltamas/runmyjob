@@ -117,7 +117,7 @@ struct LedgerAcceptanceTests {
         for database in databases {
             let rows = try await database.query("SELECT version FROM schema_version")
             #expect(rows.count == 1)
-            #expect(rows.first?["version"]?.intValue == 1)
+            #expect(rows.first?["version"]?.intValue == 2)
         }
         try await databases[0].execute("UPDATE schema_version SET version = 99")
         #expect(throws: DatabaseError.self) { _ = try Database(url: url) }

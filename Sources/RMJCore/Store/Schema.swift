@@ -3,9 +3,15 @@ import Foundation
 /// Migrations run inside the opener's `BEGIN IMMEDIATE`, which is the lock row's job: a second
 /// process opening at the same time waits for the first to finish and then finds the version current.
 enum Schema {
-    static let version = 1
+    static var version: Int { steps.count }
 
-    static let statements = [
+    /// One list per schema version, applied in order; a later version only adds to what the earlier ones made.
+    static let steps: [[String]] = [first, [
+        "ALTER TABLE job ADD COLUMN avg_cpu REAL",
+        "ALTER TABLE job ADD COLUMN avg_memory_bytes INTEGER",
+    ]]
+
+    private static let first = [
         """
         CREATE TABLE job (
             id TEXT PRIMARY KEY,
@@ -60,7 +66,7 @@ enum Schema {
         let current = try run("SELECT version FROM schema_version").rows.first?["version"]?.intValue ?? 0
         guard current <= version else { throw DatabaseError(code: 1, message: "ledger is from a newer RMJ (schema \(current))") }
         guard current < version else { return }
-        for statement in statements { _ = try run(statement) }
+        for statement in steps.dropFirst(Int(current)).joined() { _ = try run(statement) }
         _ = try run("INSERT OR REPLACE INTO schema_version (id, version) VALUES (1, \(version))")
     }
 }

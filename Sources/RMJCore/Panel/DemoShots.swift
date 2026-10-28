@@ -61,7 +61,7 @@ public enum DemoShots {
         var localFailed = JobRecord(id: "local-failed", repo: "acme/orbit", command: "cargo test", location: "local", fallbackReason: reason,
                                     environment: "mac", state: .failed, queuedAt: now.addingTimeInterval(-3_600))
         localFailed.agent = "codex"; localFailed.branch = "main"; localFailed.commit = "5c4b3a29"; localFailed.exitCode = 1
-        localFailed.startedAt = now.addingTimeInterval(-3_590); localFailed.endedAt = now.addingTimeInterval(-3_380); localFailed.macElapsedMS = 210_000
+        localFailed.startedAt = now.addingTimeInterval(-3_590); localFailed.endedAt = now.addingTimeInterval(-3_380); localFailed.macElapsedMS = 210_000; localFailed.avgCPU = 236; localFailed.avgMemoryBytes = 1_450_000_000
 
         var lost = JobRecord(id: "rx-lost", repo: "acme/harbor", command: "cargo test --workspace", location: "ai-eu-1", destination: "ai-eu-1",
                              state: .lost, queuedAt: now.addingTimeInterval(-5_400))

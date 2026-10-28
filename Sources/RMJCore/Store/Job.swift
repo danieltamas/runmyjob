@@ -43,6 +43,9 @@ public struct JobRecord: Sendable, Equatable {
     public var boxExit: Int?
     public var macElapsedMS: Int?
     public var clockOffsetMS: Int?
+    /// What a run on this Mac cost on average: processor in percent of one core, resident memory in bytes.
+    public var avgCPU: Double?
+    public var avgMemoryBytes: Int64?
     public var github: String?
     /// Where the command came from: the checkout, its state and the agent that asked.
     public var tenant: String?
@@ -98,6 +101,8 @@ public struct JobPatch: Sendable {
     public var boxExit: Int?
     public var macElapsedMS: Int?
     public var clockOffsetMS: Int?
+    public var avgCPU: Double?
+    public var avgMemoryBytes: Int64?
     public var github: String?
 
     public init() {}

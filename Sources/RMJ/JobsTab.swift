@@ -185,8 +185,9 @@ struct JobRowView: View {
             return item.offset == 0 ? part : Text("\(text)\(Text("  \u{00B7}  ").foregroundStyle(Theme.textTertiary))\(part)")
         }
         .font(.system(size: 11, design: .default).monospacedDigit())
-        .lineLimit(expanded || row.state == .queued ? nil : 1).truncationMode(.tail)
+        .lineLimit(expanded || row.state == .queued ? nil : 2).truncationMode(.tail)
         .fixedSize(horizontal: false, vertical: true)
+        .help(row.detail.moments)
     }
 
     private var actions: some View {

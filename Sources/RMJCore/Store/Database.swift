@@ -9,9 +9,11 @@ public enum SQLValue: Sendable, Equatable {
 
     public var intValue: Int64? { if case .int(let value) = self { value } else { nil } }
     public var textValue: String? { if case .text(let value) = self { value } else { nil } }
+    public var realValue: Double? { if case .real(let value) = self { value } else { nil } }
 
     public static func optional(_ value: Int64?) -> SQLValue { value.map(SQLValue.int) ?? .null }
     public static func optional(_ value: String?) -> SQLValue { value.map(SQLValue.text) ?? .null }
+    public static func optional(_ value: Double?) -> SQLValue { value.map(SQLValue.real) ?? .null }
 }
 
 public typealias Row = [String: SQLValue]
