@@ -66,8 +66,9 @@ struct RuleEditorCard: View {
             HStack(spacing: 8) {
                 if let index {
                     ActionButton(title: "Delete", style: .destructive) { apply(.delete(index)) }
-                    ActionButton(title: "Up", symbol: "arrow.up", style: .secondary) { apply(.move(index, by: -1)) }.disabled(index == 0)
-                    ActionButton(title: "Down", symbol: "arrow.down", style: .secondary) { apply(.move(index, by: 1)) }.disabled(index >= count - 1)
+                    // Icon-only: five labelled buttons are wider than the panel, and the panel grows to fit them.
+                    ActionButton(title: "", symbol: "arrow.up", style: .secondary) { apply(.move(index, by: -1)) }.disabled(index == 0).help("Move up")
+                    ActionButton(title: "", symbol: "arrow.down", style: .secondary) { apply(.move(index, by: 1)) }.disabled(index >= count - 1).help("Move down")
                 }
                 Spacer(minLength: 0)
                 ActionButton(title: "Cancel", style: .secondary, action: close)

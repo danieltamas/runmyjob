@@ -293,7 +293,7 @@ struct ActionButton: View {
         let tint: Color = style == .destructive ? Theme.crit : Theme.textPrimary
         Button(action: action) {
             HStack(spacing: 6) {
-                Text(title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                if !title.isEmpty { Text(title).font(.system(size: 12, weight: .semibold)).lineLimit(1) }
                 if let symbol { Image(systemName: symbol).font(.system(size: 10, weight: .bold)) }
             }
             .padding(.horizontal, 14)
