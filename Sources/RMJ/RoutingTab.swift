@@ -175,7 +175,7 @@ struct RoutingTab: View {
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain).padding(.leading, 4).padding(.top, 4)
+            .buttonStyle(PressStyle(scale: 0.99, lift: 0.04)).padding(.leading, 4).padding(.top, 4)
             if showLabels, routing.labels.isEmpty {
                 Text("Workflows appear here once the GitHub poller has seen their jobs.").font(.meta).foregroundStyle(Theme.textTertiary).padding(.leading, 4)
             }

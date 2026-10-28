@@ -157,12 +157,17 @@ private struct SwitchTrack: View {
 /// NSView; SwiftUI's own hover is dropped whenever a row is rebuilt under a resting pointer.
 private struct TooltipRegion<Tip: View>: NSViewRepresentable {
     let tip: Tip
+    let enabled: Bool
 
     func makeNSView(context: Context) -> Tracker { Tracker() }
-    func updateNSView(_ view: Tracker, context: Context) { view.tip = AnyView(tip) }
+    func updateNSView(_ view: Tracker, context: Context) {
+        view.tip = AnyView(tip)
+        view.enabled = enabled
+    }
 
     final class Tracker: NSView {
         var tip = AnyView(EmptyView())
+        var enabled = true { didSet { if !enabled { hide() } } }
         private var area: NSTrackingArea?
         private var panel: NSPanel?
 
@@ -185,7 +190,7 @@ private struct TooltipRegion<Tip: View>: NSViewRepresentable {
         override func mouseExited(with event: NSEvent) { hide() }
 
         private func show() {
-            guard panel == nil, let window else { return }
+            guard enabled, panel == nil, let window else { return }
             let host = NSHostingView(rootView: tip)
             let size = host.fittingSize
             let anchor = window.convertToScreen(convert(bounds, to: nil))
@@ -217,8 +222,8 @@ private struct TooltipRegion<Tip: View>: NSViewRepresentable {
 }
 
 extension View {
-    /// Shows `tip` under this view while the pointer is on it.
-    func tooltip(@ViewBuilder _ tip: () -> some View) -> some View {
-        contentShape(Rectangle()).background(TooltipRegion(tip: tip()))
+    /// Shows `tip` under this view while the pointer is on it (and `enabled`).
+    func tooltip(enabled: Bool = true, @ViewBuilder _ tip: () -> some View) -> some View {
+        contentShape(Rectangle()).background(TooltipRegion(tip: tip(), enabled: enabled))
     }
 }

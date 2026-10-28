@@ -46,7 +46,7 @@ struct JobsTab: View {
                     Button { filter.kind = kind } label: {
                         Chip(text: kind.rawValue, color: on ? Theme.teal : Theme.textSecondary, style: on ? .tinted : .outline)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressStyle(scale: 0.97, hit: AnyShape(Capsule()), lift: 0.08))
                 }
             }
         }
@@ -175,7 +175,7 @@ struct JobRowView: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 6) {
             metaLine.frame(maxWidth: .infinity, alignment: .leading)
-                .tooltip { MomentsCard(moments: row.detail.momentRows) }
+                .tooltip(enabled: expanded) { MomentsCard(moments: row.detail.momentRows) }
             if let load = row.load { LoadGauges(load: load) }
         }
     }
