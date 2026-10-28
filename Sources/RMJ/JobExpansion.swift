@@ -2,7 +2,7 @@ import AppKit
 import RMJCore
 import SwiftUI
 
-/// The rest of a row once opened: where the time went, when it happened, what rule applied, the end of the log and the actions.
+/// The rest of a row once opened: where the time went, when it happened, what rule applied and the actions.
 struct JobExpansion: View {
     let row: JobRowPresentation
     @ObservedObject var model: PanelModel
@@ -25,7 +25,6 @@ struct JobExpansion: View {
             tiles(stamps.filter { ["queued", "started", "ended"].contains($0.label) })
             boxLine(stamps.filter { $0.label.hasPrefix("box") }, notes)
             properties
-            logPanel
             buttons
         }
     }
@@ -136,70 +135,15 @@ struct JobExpansion: View {
         }
     }
 
-    // MARK: log
-
-    @ViewBuilder
-    private var logPanel: some View {
-        switch model.tails[row.id] {
-        case .lines(let lines) where !lines.isEmpty:
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 6) {
-                    Image(systemName: "text.alignleft").font(.system(size: 9.5))
-                    Text("LOG").font(.system(size: 9, weight: .semibold)).tracking(0.8)
-                    Text("last \(lines.count) lines").font(.system(size: 10))
-                    Spacer()
-                    Button { JobActions.perform(.log, on: row, model: model) } label: {
-                        HStack(spacing: 3) { Text("Open"); Image(systemName: "arrow.up.right").font(.system(size: 8, weight: .bold)) }
-                    }
-                    .buttonStyle(.plain).foregroundStyle(Theme.teal)
-                }
-                .font(.system(size: 10, weight: .medium)).foregroundStyle(Theme.textTertiary)
-                .padding(.horizontal, 10).padding(.vertical, 6)
-                Rectangle().fill(Theme.hairline).frame(height: 0.5)
-                VStack(alignment: .leading, spacing: 1) {
-                    ForEach(Array(lines.suffix(40).enumerated()), id: \.offset) { _, line in
-                        Text(line.isEmpty ? " " : line).foregroundStyle(tone(line)).lineLimit(2).truncationMode(.tail)
-                    }
-                }
-                .font(.system(size: 10, design: .monospaced)).textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading).padding(10)
-            }
-            .background(Theme.canvas.opacity(0.6), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 0.5))
-        case .lines:
-            logNote("The log is empty so far.")
-        case .note(let note):
-            logNote("No log: \(note)")
-        case nil:
-            EmptyView()
-        }
-    }
-
-    private func logNote(_ text: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "text.alignleft").font(.system(size: 10))
-            Text(text)
-        }
-        .font(.meta).foregroundStyle(Theme.textTertiary)
-    }
-
-    /// Errors and warnings stand out; everything else stays quiet.
-    private func tone(_ line: String) -> Color {
-        let lower = line.lowercased()
-        if lower.contains("error") || lower.contains("failed") || lower.contains("panicked") { return Theme.crit }
-        if lower.contains("warning") { return Theme.warn }
-        return Theme.textSecondary
-    }
-
     // MARK: actions
 
     private var buttons: some View {
         HStack(spacing: 8) {
+            ChipButton(title: "Open log") { JobActions.perform(.log, on: row, model: model) }
             if row.detail.canCancel { ChipButton(title: "Cancel", destructive: true) { JobActions.cancel(row, model: model) } }
             if row.state.isSettledOrLost { ChipButton(title: "Rerun") { JobActions.perform(.rerun, on: row, model: model) } }
             if let url = row.detail.url { ChipButton(title: "Open on GitHub") { NSWorkspace.shared.open(url) } }
             if !row.detail.isGitHub { ChipButton(title: "Explain route") { JobActions.explain(row, model: model) } }
-            if model.tails[row.id] == nil { ChipButton(title: "Open log") { JobActions.perform(.log, on: row, model: model) } }
         }
     }
 }

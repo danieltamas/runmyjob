@@ -85,7 +85,6 @@ final class PanelModel: ObservableObject {
     func toggle(_ id: String) {
         if expanded.contains(id) { expanded.remove(id); return }
         expanded.insert(id)
-        if tails[id] == nil, loop != nil { tails[id] = LogTail.read(jobID: id, home: RMJHome()) }
     }
 
     func say(_ text: String) {
@@ -176,14 +175,8 @@ final class PanelModel: ObservableObject {
         let failures = Set(fresh.jobs.filter { $0.state == .failed || $0.state == .lost }.map(\.id))
         if tab == .jobs, panelVisible { seenFailures.formUnion(failures) }
         next.unseenFailure = !failures.isSubset(of: seenFailures)
-        // A tail is re-read while its job runs and once more after the job settles, so the final lines show.
-        let wasLive = Set(snapshot.jobs.filter { [.running, .syncing].contains($0.state) }.map(\.id))
-        let isLive = Set(fresh.jobs.filter { [.running, .syncing].contains($0.state) }.map(\.id))
         snapshot = next
         alerts.handle(fresh)
-        for id in expanded where tails[id] != nil && (isLive.contains(id) || wasLive.contains(id)) {
-            tails[id] = LogTail.read(jobID: id, home: RMJHome())
-        }
     }
 
     private func markSeen() {

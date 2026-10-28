@@ -50,9 +50,6 @@ enum ScreenshotRender {
             try write(PanelView(model: routing, height: 1500), to: url("routing"))
             let open = PanelModel(snapshot: DemoShots.snapshot(stress: stress))
             open.expanded = ["rx-failed", "gh-queued"]
-            open.tails["rx-failed"] = .lines(["   Compiling orbit-core v0.4.1", "   Compiling orbit-router v0.4.1", "error[E0599]: no method named `chain` found for struct `Plan`",
-                                              "  --> crates/router/src/plan.rs:88:14", "error: could not compile `orbit-router` (lib) due to 1 previous error"])
-            open.tails["gh-queued"] = .note("unavailable: the job has not started")
             try write(PanelView(model: open, height: 1800), to: url("jobs-open"))
             var down = DemoShots.snapshot(stress: stress)
             down.tailnet = DemoShots.tailnet(standing: .stopped)
