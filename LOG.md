@@ -181,3 +181,8 @@
 - Review: Codex read-only, 2 P0, 6 P1, 1 P2; fixed or answered in docs/reviews/u11-2026-10-28.md.
 - Verified: swift test 279 passed, scripts/check.sh ok, jobs-update render shows the arrow, app reinstalled. One Codex test line (an unsatisfiable `#expect(!(a ?? "").contains(b))`) was fixed by Codex, hashes re-recorded.
 - Open: an ssh-only failure on an online peer does not raise the unreachable notice; the in-place updater waits for U12; the arrow against a live GitHub feed needs the public repo.
+
+## 2026-10-28 (U12 prep) - release scripts
+- Built: scripts/release.sh (ad hoc, reproducible, --verify), acceptance.sh (steps 1-6), mcp-smoke.py, perf.sh, tap.sh, release-verify workflow, docs/RELEASE.md. Idle polling: one ledger read per snapshot, `tailscale status` every 30 s while nothing runs.
+- Verified: `release.sh 0.1.0 --verify --ref HEAD` two builds identical; `acceptance.sh mcp` ok (8 tools, slowest 43 ms).
+- Open: idle CPU measures 0.43% over 120 s against the 0.3% budget (streaming 0.33% against 2%); live, the 10-minute perf run, the public repo, tag, cask and release are not done. No Developer ID: ad hoc signing only.

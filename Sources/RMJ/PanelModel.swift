@@ -116,7 +116,8 @@ final class PanelModel: ObservableObject {
         backgroundLoop = Task { [background] in await background.run() }
         loop = Task { [weak self] in
             while !Task.isCancelled {
-                let state = await monitor.current(maxAge: 10)
+                // `tailscale status` is a child process: read it every 30 s while nothing runs, every 10 s while a job does.
+                let state = await monitor.current(maxAge: (self?.snapshot.runningCount ?? 0) > 0 ? 10 : 30)
                 self?.probeBoxesInBackground(loader: loader, tailnet: state)
                 if let snapshot = try? await loader.snapshot(tailnet: state, probes: self?.probes ?? [:], runners: self?.runners ?? [:], registrations: self?.registrations ?? [:]) {
                     self?.update(snapshot)

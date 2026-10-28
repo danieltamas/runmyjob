@@ -1,0 +1,32 @@
+name: release-verify
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  reproducible:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      # release.sh refuses any Xcode but the pinned one. When the runner image lacks it the job says
+      # so and ends neutral: the local `scripts/release.sh X.Y.Z --verify` stays the gate.
+      - name: Select the pinned Xcode
+        id: xcode
+        run: |
+          want=$(awk '$1 == "xcode-build" { print $2 }' Support/toolchain)
+          for app in /Applications/Xcode*.app; do
+            build=$(DEVELOPER_DIR="$app/Contents/Developer" xcodebuild -version | awk '/Build version/ { print $3 }')
+            if [[ $build == "$want" ]]; then
+              echo "DEVELOPER_DIR=$app/Contents/Developer" >> "$GITHUB_ENV"
+              echo "found=1" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "::notice::Xcode build $want is not on this runner image; run scripts/release.sh --verify locally"
+          echo "found=0" >> "$GITHUB_OUTPUT"
+      - name: Build twice and compare
+        if: steps.xcode.outputs.found == '1'
+        run: scripts/release.sh "${GITHUB_REF_NAME#v}" --verify --scratch "$RUNNER_TEMP/release" --out "$RUNNER_TEMP/dist"

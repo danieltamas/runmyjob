@@ -21,10 +21,11 @@ public struct PanelLoader: Sendable {
                          probes: [String: DestinationProbeResult] = [:], runners: [String: [RunnerContainer]] = [:],
                          registrations: [String: [GitHubRunner]] = [:]) async throws -> PanelSnapshot {
         let cutoff = now.addingTimeInterval(-Self.window)
-        let jobs = try await ledger.jobs().filter { !$0.state.isSettled && $0.state != .lost || ($0.endedAt ?? $0.startedAt ?? $0.queuedAt) >= cutoff }
+        let all = try await ledger.jobs()
+        let jobs = all.filter { !$0.state.isSettled && $0.state != .lost || ($0.endedAt ?? $0.startedAt ?? $0.queuedAt) >= cutoff }
         let shown = Set(jobs.map(\.id))
         let historyCutoff = now.addingTimeInterval(-Self.historyWindow)
-        let history = try await ledger.jobs().filter { $0.state.isSettled && !shown.contains($0.id) && ($0.endedAt ?? $0.startedAt ?? $0.queuedAt) >= historyCutoff }
+        let history = all.filter { $0.state.isSettled && !shown.contains($0.id) && ($0.endedAt ?? $0.startedAt ?? $0.queuedAt) >= historyCutoff }
             .sorted { $0.queuedAt > $1.queuedAt }.prefix(Self.historyLimit)
         var lastOutput: [String: Date] = [:]
         for job in jobs where job.state == .running && job.github == nil {
