@@ -3,6 +3,7 @@ import SwiftUI
 
 struct JobsTab: View {
     @ObservedObject var model: PanelModel
+    @State private var shown = RowPaging.pageSize
 
     var body: some View {
         let sections = model.snapshot.rows
@@ -11,13 +12,20 @@ struct JobsTab: View {
                        detail: "Agents' cargo test and just check land here once the hook is installed (Settings > Hooks).")
         } else {
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(sections, id: \.0) { section, rows in
-                    Eyebrow(text: section.rawValue).padding(.top, 6).padding(.leading, 4)
+                ForEach(RowPaging.page(sections, limit: shown), id: \.0) { section, rows in
+                    Eyebrow(text: "\(section.rawValue) - \(sections.first { $0.0 == section }?.1.count ?? rows.count)").padding(.top, 6).padding(.leading, 4)
                     ForEach(rows, id: \.id) { row in
                         JobRowView(row: row, expanded: model.expanded.contains(row.id), model: model) {
                             withAnimation(Motion.snappy) { model.toggle(row.id) }
                         }
                     }
+                }
+                let settled = RowPaging.total(sections)
+                if settled > shown {
+                    ActionButton(title: "Show \(min(RowPaging.pageSize, settled - shown)) more of \(settled - shown)", style: .secondary) {
+                        shown += RowPaging.pageSize
+                    }
+                    .frame(maxWidth: .infinity)
                 }
             }
         }
