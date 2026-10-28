@@ -57,6 +57,9 @@ enum ScreenshotRender {
             var down = DemoShots.snapshot(stress: stress)
             down.tailnet = DemoShots.tailnet(standing: .stopped)
             try write(PanelView(model: PanelModel(snapshot: down)), to: url("jobs-tailnet-down"))
+            let newer = PanelModel(snapshot: DemoShots.snapshot(stress: stress))
+            newer.updateStatus = .available(ReleaseInfo(version: "9.9.9", url: nil))
+            try write(PanelView(model: newer), to: url("jobs-update"))
             var empty = DemoShots.snapshot(stress: stress)
             empty.jobs = []
             try write(PanelView(model: PanelModel(snapshot: empty)), to: url("jobs-empty"))

@@ -50,6 +50,11 @@ struct PanelView: View {
             let chip = model.snapshot.tailnetChip
             Chip(text: chip.text, symbol: chip.tone == .unknown ? "wifi.slash" : nil, color: Theme.color(chip.tone))
             Spacer(minLength: 8)
+            if case .available(let release) = model.updateStatus {
+                IconButton(symbol: "arrow.up.circle.fill", help: "RMJ \(release.version) is available") {
+                    model.openSettings(.about)
+                }
+            }
             IconButton(symbol: "gearshape", help: "Open Settings") { model.openSettings(model.settingsPane) }
             if model.snapshot.runningCount > 0 {
                 HStack(spacing: 5) {

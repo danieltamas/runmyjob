@@ -2,26 +2,35 @@ import AppKit
 import RMJCore
 import SwiftUI
 
-/// Panes whose controls arrive with their own units (docs/PLAN.md): each says what exists today and what does not.
-private struct Pending: View {
-    let text: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "hourglass").font(.system(size: 11)).foregroundStyle(Theme.textTertiary)
-            Text(text).font(.system(size: 12)).foregroundStyle(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
-        }
-    }
-}
-
 struct NotificationsPane: View {
+    @State private var settings = NotificationSettings.load(home: RMJHome())
+    @State private var error: String?
+
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             PaneHeader(pane: .notifications, title: "Notifications", detail: "Failed or lost jobs, an unreachable destination, finished jobs.")
-            SettingsCard(title: "Alerts") {
-                Pending(text: "Notifications arrive with U11. The menu bar badge already marks a failure you have not seen.")
+            SettingsCard(title: "Alerts", detail: "A failed or lost job names its repo, command, destination, duration and reason, with a button that opens the local log.") {
+                SwitchRow(title: "A job failed or was lost", isOn: binding(\.failures))
+                SwitchRow(title: "A destination became unreachable during a job", isOn: binding(\.unreachable))
+                SwitchRow(title: "A job finished", isOn: binding(\.done))
+                if let error { StatusLine(text: error, tone: .failed) }
             }
         }
+        .onAppear { settings = NotificationSettings.load(home: RMJHome()) }
+    }
+
+    private func binding(_ key: WritableKeyPath<NotificationSettings, Bool>) -> Binding<Bool> {
+        Binding(get: { settings[keyPath: key] }, set: { change(key, $0) })
+    }
+
+    private func change(_ key: WritableKeyPath<NotificationSettings, Bool>, _ on: Bool) {
+        do {
+            try NotificationSettings.set(key, to: on, home: RMJHome())
+            error = nil
+        } catch {
+            self.error = "Cannot change the setting: \(error.localizedDescription)"
+        }
+        settings = NotificationSettings.load(home: RMJHome())
     }
 }
 
@@ -58,6 +67,7 @@ struct AgentPane: View {
 }
 
 struct AboutPane: View {
+    @ObservedObject var model: PanelModel
     private static let repo = URL(string: "https://github.com/danieltamas/runmyjob")!
 
     var body: some View {
@@ -71,9 +81,12 @@ struct AboutPane: View {
                             Text("Run My Job (RMJ)").font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.textPrimary)
                             Text(Self.versionLine).font(.system(size: 12, design: .monospaced)).foregroundStyle(Theme.textSecondary)
                                 .textSelection(.enabled)
-                            Text("Checking for updates arrives with U11.").font(.system(size: 11.5)).foregroundStyle(Theme.textTertiary)
+                            updateLine
                         }
                         Spacer()
+                        if case .available(let release) = model.updateStatus, let url = release.url {
+                            PillButton(title: "Update", symbol: "arrow.up.circle", prominent: true) { NSWorkspace.shared.open(url) }
+                        }
                     }
                 }
                 .padding(16)
@@ -121,6 +134,17 @@ struct AboutPane: View {
         if info?["RMJSource"] != nil { line += ", built from source" }
         if dirty { line += ", uncommitted changes" }
         return line
+    }
+
+    @ViewBuilder private var updateLine: some View {
+        switch model.updateStatus {
+        case .available(let release):
+            Text("Version \(release.version) is available.").font(.system(size: 11.5)).foregroundStyle(Theme.teal)
+        case .current:
+            Text("You have the latest version.").font(.system(size: 11.5)).foregroundStyle(Theme.textTertiary)
+        case .unknown:
+            LinkButton(title: "Check for updates") { model.alerts.checkForUpdate(force: true) }
+        }
     }
 
     private func link(_ title: String, _ url: URL) -> some View {

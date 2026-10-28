@@ -38,7 +38,7 @@ struct SettingsView: View {
         case .notifications: NotificationsPane()
         case .agent: AgentPane()
         case .more: MoreAppsPane()
-        case .about: AboutPane()
+        case .about: AboutPane(model: model)
         }
     }
 

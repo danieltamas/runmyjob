@@ -44,6 +44,9 @@ final class PanelModel: ObservableObject {
     private var probes: [String: DestinationProbeResult] = [:]
     /// The rule open in the Routing tab: an index, -1 for a new one. The floating button and the tab share it.
     @Published var editingRule: Int?
+    /// What the last release check found; the header shows an arrow when it is `.available`.
+    @Published var updateStatus: UpdateStatus = .unknown
+    let alerts = AlertCenter()
 
     /// The repos the rule editor offers: those of every job and history row and of the rules themselves.
     var knownRepos: [String] {
@@ -57,7 +60,13 @@ final class PanelModel: ObservableObject {
     /// Failed and lost rows the Jobs tab has shown: a new one raises the menu bar badge again.
     private var seenFailures: Set<String> = []
 
-    init(snapshot: PanelSnapshot) { self.snapshot = snapshot }
+    init(snapshot: PanelSnapshot) {
+        self.snapshot = snapshot
+        alerts.onUpdate = { [weak self] status in
+            // A failed check changes nothing: an arrow already shown stays until a check says otherwise.
+            if status != .unknown { self?.updateStatus = status }
+        }
+    }
 
     /// The live model: polls the ledger once a second while a job runs and every 5 s otherwise.
     static func live() -> PanelModel {
@@ -163,6 +172,7 @@ final class PanelModel: ObservableObject {
         let wasLive = Set(snapshot.jobs.filter { [.running, .syncing].contains($0.state) }.map(\.id))
         let isLive = Set(fresh.jobs.filter { [.running, .syncing].contains($0.state) }.map(\.id))
         snapshot = next
+        alerts.handle(fresh)
         for id in expanded where tails[id] != nil && (isLive.contains(id) || wasLive.contains(id)) {
             tails[id] = LogTail.read(jobID: id, home: RMJHome())
         }

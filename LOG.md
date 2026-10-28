@@ -175,3 +175,9 @@
 - Review: Codex read-only, 2 P0 and 7 P1/P2; fixed or answered in docs/reviews/u10-2026-10-28.md.
 - Verified: swift test 265 passed, scripts/check.sh ok; stdio smoke test with a temp RMJ_HOME: initialize, access off -> isError, access on -> data, `rmj jobs --json`.
 - Open: `rmj log --pull`, `destinations --probe`, `runners --prune` are not built (the doc no longer lists them); capacity and runner figures in `destinations` stay null until a probe cache exists; route over MCP takes no live probe.
+
+## 2026-10-28 (U11) - notifications and release check
+- Built: Sources/RMJCore/Notifications (JobNotice, NotificationSettings, NotificationPlanner), Releases/UpdateChecker, Support/ConfigFile (locked read-merge-write, shared with AgentAccess); app side AlertCenter (UNUserNotificationCenter, "Open log" action), Notifications pane switches, header update arrow, About status and Update button (opens the release page).
+- Review: Codex read-only, 2 P0, 6 P1, 1 P2; fixed or answered in docs/reviews/u11-2026-10-28.md.
+- Verified: swift test 279 passed, scripts/check.sh ok, jobs-update render shows the arrow, app reinstalled. One Codex test line (an unsatisfiable `#expect(!(a ?? "").contains(b))`) was fixed by Codex, hashes re-recorded.
+- Open: an ssh-only failure on an online peer does not raise the unreachable notice; the in-place updater waits for U12; the arrow against a live GitHub feed needs the public repo.
