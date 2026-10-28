@@ -70,6 +70,13 @@ public struct JobRowPresentation: Sendable, Equatable {
         public let timestamps: [String]
         /// The moments of the run for a tooltip on its length: one line each, the Mac's clock and the box's.
         public let moments: String
+        /// The same moments as label and time, for a hover card.
+        public let momentRows: [Moment]
+
+        public struct Moment: Sendable, Equatable {
+            public let label: String
+            public let value: String
+        }
         public let rule: String?
         public let reason: String?
         public let session: String?
@@ -88,12 +95,18 @@ public struct JobRowPresentation: Sendable, Equatable {
             timeline = segments
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+            let own = info != nil ? "github" : "mac"
             func stamp(_ label: String, _ date: Date?, _ provenance: String) -> String? { date.map { "\(label) \(formatter.string(from: $0)) (\(provenance))" } }
-            var lines = [stamp("queued", job.queuedAt, "mac"), stamp("started", job.startedAt, "mac"), stamp("ended", job.endedAt, "mac"),
+            var lines = [stamp("queued", job.queuedAt, own), stamp("started", job.startedAt, own), stamp("ended", job.endedAt, own),
                          stamp("box start", job.boxStartedAt, "box"), stamp("box end", job.boxEndedAt, "box")].compactMap { $0 }
             if let offset = job.clockOffsetMS { lines.append("clock offset \(offset) ms") }
             timestamps = lines
             moments = lines.joined(separator: "\n")
+            momentRows = lines.map { line in
+                let words = line.split(separator: " ")
+                let at = words.firstIndex { $0.first?.isNumber == true } ?? words.count
+                return Moment(label: words[..<at].joined(separator: " "), value: words[at...].joined(separator: " "))
+            }
             rule = job.rule
             reason = job.fallbackReason
             session = job.session

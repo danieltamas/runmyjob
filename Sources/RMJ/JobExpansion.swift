@@ -39,7 +39,6 @@ struct JobExpansion: View {
                             Circle().fill(color(segment.label)).frame(width: 6, height: 6)
                             Text(segment.label).foregroundStyle(Theme.textTertiary)
                             Text(PanelFormat.duration(segment.seconds)).foregroundStyle(Theme.textPrimary).monospacedDigit()
-                                .help(row.detail.moments)
                         }
                     }
                     Spacer(minLength: 0)
@@ -94,5 +93,48 @@ struct JobExpansion: View {
             if let url = row.detail.url { ChipButton(title: "Open on GitHub") { NSWorkspace.shared.open(url) } }
             if !row.detail.isGitHub { ChipButton(title: "Explain route") { JobActions.explain(row, model: model) } }
         }
+    }
+}
+
+/// A card of when the run happened, shown under whatever the pointer rests on. Not a system tooltip: the panel is a
+/// non-activating window and those appear late or never there.
+private struct MomentsTip: ViewModifier {
+    let moments: [JobRowPresentation.Detail.Moment]
+    @Binding var shown: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .contentShape(Rectangle())
+            .onHover { inside in
+                guard !moments.isEmpty else { return }
+                withAnimation(Motion.snappy) { shown = inside }
+            }
+            .overlay(alignment: .topLeading) {
+                if shown {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(moments, id: \.label) { moment in
+                            HStack(spacing: 10) {
+                                Text(moment.label).foregroundStyle(Theme.textTertiary).frame(width: 62, alignment: .leading)
+                                Text(moment.value).foregroundStyle(Theme.textPrimary)
+                            }
+                        }
+                    }
+                    .font(.system(size: 10.5, design: .monospaced)).lineLimit(1).fixedSize()
+                    .padding(.horizontal, 10).padding(.vertical, 8)
+                    .background(Theme.shell, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 0.5))
+                    .shadow(color: .black.opacity(0.4), radius: 10, y: 4)
+                    .offset(y: 20)
+                    .transition(.opacity.combined(with: .offset(y: -4)))
+                    .allowsHitTesting(false)
+                }
+            }
+    }
+}
+
+extension View {
+    /// Shows the moments of a run in a card under this view while the pointer is on it.
+    func momentsTip(_ moments: [JobRowPresentation.Detail.Moment], shown: Binding<Bool>) -> some View {
+        modifier(MomentsTip(moments: moments, shown: shown))
     }
 }
