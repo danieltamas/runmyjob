@@ -113,6 +113,18 @@ ETags; runners from `/repos/{owner}/{repo}/actions/runners` and `/orgs/{org}/act
 Queue reason: the registrations for the job's labels, classified as stale (offline, idle), all busy,
 none online, or dispatch delay. Rerun: `gh run rerun <id> [--failed]`.
 
+## Log streaming
+
+Optional (docs/LOG-STREAMING.md). `RunEngine` opens a `LogStream` per run when `LogStreamer.make` finds an
+enabled sink that accepts the run's tenant (none: nothing is created). `OutputPump` feeds the displayed
+bytes to the stream; `LogLineAssembler` cuts lines, strips escapes and `LogShipper` redacts and appends
+batches to each accepted sink's `LogSpool` (`~/.rmj/spool/<id>/`, atomic `.batch` files). A
+`LogSinkDrainer` per sink sends the oldest file through `LogSinkFormat` (Loki, Datadog, Elasticsearch
+encoders) and deletes it after a 2xx; a flock on the spool makes one drainer at a time, whether in the
+CLI (while the run lasts, plus 3 s) or in the app (`AppBackground`, every 5 s). Status goes to
+`~/.rmj/log-sinks.json`, read by the panel glyph and by `rmj sinks`. Failed GitHub job logs are shipped
+once archived (`LogStreamerArchive`). Secrets: Keychain `rmj.sink.<id>`.
+
 ## Keychain
 
 Items `rmj.pat.<target>` (one per runner target), created from Settings > Destinations with the

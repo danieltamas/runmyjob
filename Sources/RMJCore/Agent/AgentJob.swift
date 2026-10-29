@@ -6,7 +6,7 @@ enum AgentJob {
     static func stamp(_ date: Date?) -> Any { date.map { $0.formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true)) } ?? NSNull() }
     static func number(_ value: Int?) -> Any { value ?? NSNull() }
 
-    static func json(_ job: JobRecord, log: LogEntry?) -> [String: Any] {
+    static func json(_ job: JobRecord, log: LogArchiveEntry?) -> [String: Any] {
         let github = GitHubJobInfo.decode(job.github)
         let duration: (Any, String) = switch job.duration {
         case .box(let ms): (ms, "box")
@@ -81,7 +81,7 @@ enum AgentJob {
         ]
     }
 
-    private static func logs(_ job: JobRecord, entry: LogEntry?) -> [String: Any] {
+    private static func logs(_ job: JobRecord, entry: LogArchiveEntry?) -> [String: Any] {
         guard let entry else {
             let remote = job.destination != nil
             return ["box": NSNull(), "local": NSNull(), "status": remote ? "pending" : "unavailable",

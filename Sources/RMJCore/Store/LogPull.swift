@@ -17,10 +17,10 @@ public struct LogPull: Sendable {
     /// Pulls every pending log of a run that has stopped running. A pull that cannot happen (box
     /// offline, Mac asleep) leaves the entry `pending` with the reason, to be retried next time.
     @discardableResult
-    public func reconcile(source: LogSource, secrets: [String], now: Date = Date()) async throws -> [LogEntry] {
-        var pulled = [LogEntry]()
+    public func reconcile(source: LogSource, secrets: [String], now: Date = Date()) async throws -> [LogArchiveEntry] {
+        var pulled = [LogArchiveEntry]()
         let waiting = try await archive.pending()
-        var ordered = [(LogEntry, JobState)]()
+        var ordered = [(LogArchiveEntry, JobState)]()
         for entry in waiting {
             guard let job = try await ledger.job(entry.jobID), job.state != .queued, job.state != .syncing, job.state != .running else { continue }
             ordered.append((entry, job.state))

@@ -47,6 +47,9 @@ final class PanelModel: ObservableObject {
     private var probes: [String: DestinationProbeResult] = [:]
     /// The rule open in the Routing tab: an index, -1 for a new one. The floating button and the tab share it.
     @Published var editingRule: Int?
+    /// The header glyph for log streaming, and what its tooltip says; both come from the sinks' status file.
+    @Published var streamIndicator: LogStreamIndicator = .off
+    @Published var streamHelp = ""
     /// What the last release check found; the header shows an arrow when it is `.available`.
     @Published var updateStatus: UpdateStatus = .unknown
     let alerts = AlertCenter()
@@ -133,12 +136,26 @@ final class PanelModel: ObservableObject {
                     self?.githubPolledAt = await background.githubPolledAt
                     self?.boxesPolledAt = await background.boxesPolledAt
                 }
+                self?.refreshStream()
                 let busy = self?.snapshot.runningCount ?? 0 > 0
                 // Closed and idle: the menu bar icon is all that shows, so a longer beat costs nothing visible.
                 let hiddenIdle = !busy && !(self?.panelVisible ?? true)
                 try? await Task.sleep(for: .seconds(busy ? 1 : hiddenIdle ? 15 : 5))
             }
         }
+    }
+
+    private func refreshStream() {
+        let home = RMJHome()
+        let sinks = LogSinkStore.load(home: home).sinks.filter(\.enabled)
+        let status = LogSinkStatusStore(home: home).read()
+        let state = LogStreamIndicator.state(sinks: sinks, status: status, now: Date())
+        let help = sinks.isEmpty ? "" : "Streaming logs to " + sinks.map { sink in
+            let waiting = status.first { $0.id == sink.id }?.waitingLines ?? 0
+            return waiting > 0 ? "\(sink.name) (\(waiting) waiting)" : sink.name
+        }.joined(separator: ", ")
+        if state != streamIndicator { streamIndicator = state }
+        if help != streamHelp { streamHelp = help }
     }
 
     /// Every 30 s while the Destinations tab is open or a job runs, else every 5 minutes, so disk and memory stay current.

@@ -59,7 +59,8 @@ public enum RunCommand {
                                               fileExists: { FileManager.default.fileExists(atPath: $0) }),
                                boxes: boxes, probes: probes,
                                output: { FileHandle.standardOutput.write($0) },
-                               notice: { FileHandle.standardError.write(Data(($0 + "\n").utf8)) })
+                               notice: { FileHandle.standardError.write(Data(($0 + "\n").utf8)) },
+                               streamer: LogStreamer.make(home: RMJHome(environment: environment)))
         let root = URL(fileURLWithPath: identity.worktree).standardizedFileURL.resolvingSymlinksInPath().path
         let here = directory.standardizedFileURL.resolvingSymlinksInPath().path
         let relative = here.hasPrefix(root + "/") ? String(here.dropFirst(root.count + 1)) : ""

@@ -37,7 +37,7 @@ enum AgentLog {
     }
 
     /// The archive's file for a log, only when it lies inside the log folder.
-    static func file(for entry: LogEntry, in archive: LogArchive) -> URL? {
+    static func file(for entry: LogArchiveEntry, in archive: LogArchive) -> URL? {
         guard let path = entry.path else { return nil }
         let folder = archive.directory.resolvingSymlinksInPath().path
         let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath()

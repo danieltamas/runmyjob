@@ -23,6 +23,9 @@ if arguments.first == "guard" {
 if arguments.first == "rerun" {
     exit(await GitHubCommand.rerun(arguments: Array(arguments.dropFirst())))
 }
+if arguments.first == "sinks" {
+    exit(await SinksCommand.run(arguments: Array(arguments.dropFirst())))
+}
 if arguments.first == "mcp" {
     exit(await MCPServe.run())
 }

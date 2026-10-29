@@ -36,6 +36,7 @@ struct SettingsView: View {
         case .hooks: HooksPane()
         case .retention: RetentionPane()
         case .notifications: NotificationsPane()
+        case .logs: LogStreamPane()
         case .agent: AgentPane()
         case .more: MoreAppsPane(model: model.moreApps)
         case .about: AboutPane(model: model)

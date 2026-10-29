@@ -17,6 +17,39 @@ public enum DemoShots {
         TailnetState(standing: standing, magicDNSEnabled: true, peers: [], readAt: now.addingTimeInterval(-20))
     }
 
+    /// A failed local run and its output, for the run report's screenshot.
+    public static let reportJob: JobRecord = jobs(stress: false).first { $0.id == "local-failed" }!
+    public static let reportLog = """
+    $ cargo test
+       Compiling orbit v0.4.2 (/Users/dev/orbit)
+    warning: unused variable: `retries`
+      --> src/queue.rs:41:13
+       Compiling orbit-cli v0.4.2
+        Finished test [unoptimized + debuginfo] target(s) in 38.20s
+         Running unittests src/lib.rs
+    running 6 tests
+    test queue::drains_in_order ... ok
+    test queue::retries_then_gives_up ... ok
+    test lease::expires ... ok
+    test lease::renews ... FAILED
+    test wire::roundtrip ... ok
+    test wire::rejects_truncated ... ok
+
+    failures:
+
+    ---- lease::renews stdout ----
+    thread 'lease::renews' panicked at src/lease.rs:88:9:
+    assertion `left == right` failed: lease must outlive the renewal
+      left: 29
+     right: 30
+
+    failures:
+        lease::renews
+
+    test result: FAILED. 5 passed; 1 failed; 0 ignored
+    error: test failed, to rerun pass `--lib`
+    """
+
     static func jobs(stress: Bool) -> [JobRecord] {
         let repo = stress ? "example-organisation/a-repository-with-a-very-long-name-ab" : "acme/orbit"
         let workflow = stress ? "continuous-integration-and-release-pipeline-for-all-supported-targets" : "ci / test (linux)"

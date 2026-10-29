@@ -210,14 +210,14 @@ enum JobActions {
     @MainActor static func perform(_ action: JobRowPresentation.Action, on row: JobRowPresentation, model: PanelModel) {
         switch action {
         case .log:
-            let url = RMJHome().url.appendingPathComponent("logs/\(row.id).log")
-            if let archived = LogTail.archived(jobID: row.id, home: RMJHome()) { NSWorkspace.shared.open(archived) } else if row.detail.isGitHub {
+            // A GitHub job's log is fetched once and archived; the report opens either way and says when there is none.
+            if row.detail.isGitHub, LogTail.archived(jobID: row.id, home: RMJHome()) == nil {
                 model.say("Fetching the log of \(row.title) from GitHub...")
                 Task {
-                    let problem = await GitHubCommand.fetchLog(row.id)
-                    if let problem { model.say(problem) } else { NSWorkspace.shared.open(url); model.say("Opened the log of \(row.title).") }
+                    if let problem = await GitHubCommand.fetchLog(row.id) { model.say(problem) }
+                    ReportWindows.show(jobID: row.id)
                 }
-            } else { model.say("No archived log for \(row.id) yet.") }
+            } else { ReportWindows.show(jobID: row.id) }
         case .rerun:
             if row.detail.isGitHub {
                 model.say("Rerunning \(row.title)...")

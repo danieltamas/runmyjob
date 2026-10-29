@@ -38,6 +38,8 @@ enum ScreenshotRender {
             for (name, tab) in [("jobs", PanelTab.jobs)] {
                 let model = PanelModel(snapshot: DemoShots.snapshot(stress: stress))
                 model.tab = tab
+                model.streamIndicator = .healthy
+                model.streamHelp = "Streaming logs to Team Loki, Datadog EU"
                 try write(PanelView(model: model, height: PanelView.height), to: url(name))
             }
             // Review-only: the whole list in one image, past the screen's height.
@@ -51,6 +53,11 @@ enum ScreenshotRender {
             let open = PanelModel(snapshot: DemoShots.snapshot(stress: stress))
             open.openJobs = ["rx-failed", "gh-queued"]
             try write(PanelView(model: open, height: 1800), to: url("jobs-open"))
+            let shown = ReportModel(jobID: DemoShots.reportJob.id, report: RunReport(DemoShots.reportJob, now: DemoShots.now),
+                                    log: LogDocument(text: DemoShots.reportLog))
+            try write(ReportView(model: shown).frame(width: 1040, height: 680), to: url("report"))
+            let rows = DemoShots.logSinks.map { LogStreamModel.Row(sink: $0.sink, status: $0.status, pending: $0.pending) }
+            try write(LogStreamPane(model: LogStreamModel(demo: rows)).padding(28).frame(width: 760, alignment: .topLeading).background(Backdrop()), to: url("log-streaming"))
             var down = DemoShots.snapshot(stress: stress)
             down.tailnet = DemoShots.tailnet(standing: .stopped)
             try write(PanelView(model: PanelModel(snapshot: down)), to: url("jobs-tailnet-down"))

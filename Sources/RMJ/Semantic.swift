@@ -13,7 +13,7 @@ extension Theme {
 /// The panes of the Settings window, in the order of docs/DESIGN.md.
 enum SettingsPane: String, CaseIterable, Identifiable {
     case general = "General", tailscale = "Tailscale", destinations = "Destinations", hooks = "Hooks"
-    case retention = "Retention", notifications = "Notifications", agent = "Agent access", more = "More apps", about = "About"
+    case retention = "Retention", notifications = "Notifications", logs = "Log streaming", agent = "Agent access", more = "More apps", about = "About"
 
     var id: String { rawValue }
 
@@ -25,6 +25,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .hooks: "terminal"
         case .retention: "clock.arrow.circlepath"
         case .notifications: "bell"
+        case .logs: "dot.radiowaves.up.forward"
         case .agent: "sparkles"
         case .more: "square.grid.2x2"
         case .about: "info.circle"
@@ -33,7 +34,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
 
     @MainActor var color: Color {
         switch self {
-        case .general, .agent: Theme.teal
+        case .general, .agent, .logs: Theme.teal
         case .tailscale, .destinations: Theme.ok
         case .hooks, .retention: Theme.warn
         case .more: Theme.teal

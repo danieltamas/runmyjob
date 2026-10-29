@@ -59,12 +59,14 @@ public struct RunEngine: Sendable {
     private let notice: @Sendable (String) -> Void
     private let now: @Sendable () -> Date
     private let profiles: ProfileStore
+    private let streamer: LogStreamer?
 
     /// `output` gets the job's output, already cleaned of terminal escapes; `notice` gets rmj's own messages.
     public init(ledger: Ledger, archive: LogArchive, router: Router, boxes: BoxDirectory, probes: ProbeProvider, secrets: [String] = [],
                 output: @escaping @Sendable (Data) -> Void, notice: @escaping @Sendable (String) -> Void,
-                profiles: ProfileStore = ProfileStore(home: RMJHome()), now: @escaping @Sendable () -> Date = { Date() }) {
+                profiles: ProfileStore = ProfileStore(home: RMJHome()), streamer: LogStreamer? = nil, now: @escaping @Sendable () -> Date = { Date() }) {
         self.profiles = profiles
+        self.streamer = streamer
         self.ledger = ledger
         self.archive = archive
         self.router = router
@@ -209,13 +211,15 @@ public struct RunEngine: Sendable {
     private func follow(_ id: String, _ boxJob: BoxJob, client: BoxClient, destination: String, began: ContinuousClock.Instant) async -> RunResult {
         _ = try? await advance(id, .running) { $0.startedAt = now() }
         try? await archive.markPending(jobID: id, reason: "running", now: now())
-        let pump = OutputPump(writer: try? archive.writer(jobID: id, side: "box", secrets: secrets), output: output, secrets: secrets)
+        let stream = await openStream(id)
+        let pump = OutputPump(writer: try? archive.writer(jobID: id, side: "box", secrets: secrets), output: output, secrets: secrets, logStream: stream)
         var streamed = true
         do { try await client.tail(boxJob, output: pump.add) } catch { streamed = false }
         await pump.close()
         let asked = now()
         guard let record = try? await client.record(ulid: id), let result = record.result else {
             await pump.abandon()
+            await stream?.abandon()
             notice("rmj: lost contact with the box; the job continues there. See: rmj jobs")
             return RunResult(jobID: id, exitCode: 1, state: .running)
         }
@@ -232,7 +236,17 @@ public struct RunEngine: Sendable {
                                         macElapsedMS: ms, clockOffsetMS: offset)
         }
         let state: JobState = result.cancelled ? .cancelled : result.code == 0 ? .done : .failed
+        let settled = try? await ledger.job(id)
+        await stream?.finish(state: state.rawValue, exitCode: result.code, seconds: Double(ms) / 1000, avgCPU: settled?.avgCPU,
+                             avgMemoryBytes: settled?.avgMemoryBytes)
         return RunResult(jobID: id, exitCode: Int32(clamping: result.code), state: state)
+    }
+
+    /// The job's log stream, when a sink is on for its tenant.
+    private func openStream(_ id: String) async -> LogStream? {
+        guard let streamer, let job = try? await ledger.job(id) else { return nil }
+        return streamer.begin(job: id, repo: job.repo, tenant: job.tenant, branch: job.branch, agent: job.agent,
+                              destination: job.destination ?? "local", secrets: secrets)
     }
 
     // MARK: local
@@ -241,7 +255,8 @@ public struct RunEngine: Sendable {
         LocalClient.record(id, in: archive.directory)
         defer { LocalClient.clear(id, in: archive.directory) }
         _ = try? await advance(id, .running) { $0.startedAt = now() }
-        let pump = OutputPump(writer: try? archive.writer(jobID: id, side: "mac", secrets: secrets), output: output, secrets: secrets)
+        let stream = await openStream(id)
+        let pump = OutputPump(writer: try? archive.writer(jobID: id, side: "mac", secrets: secrets), output: output, secrets: secrets, logStream: stream)
         var status: Int32 = 127
         let recorder = LoadRecorder()
         await recorder.start()
@@ -262,6 +277,8 @@ public struct RunEngine: Sendable {
         patch.avgMemoryBytes = average?.memoryBytes
         let state: JobState = status == 0 ? .done : .failed
         _ = try? await ledger.advance(id, to: state, at: now(), patch: patch)
+        await stream?.finish(state: state.rawValue, exitCode: Int(status), seconds: Double(patch.macElapsedMS ?? 0) / 1000,
+                             avgCPU: average?.cpuPercent, avgMemoryBytes: average?.memoryBytes)
         return RunResult(jobID: id, exitCode: status, state: state)
     }
 
@@ -342,7 +359,7 @@ final class OutputPump: @unchecked Sendable {
     private let consumer: Task<Void, Never>
     private let writer: LogWriter?
 
-    init(writer: LogWriter?, output: @escaping @Sendable (Data) -> Void, secrets: [String]) {
+    init(writer: LogWriter?, output: @escaping @Sendable (Data) -> Void, secrets: [String], logStream: LogStream? = nil) {
         let (stream, continuation) = AsyncStream<Data>.makeStream()
         self.continuation = continuation
         self.writer = writer
@@ -353,10 +370,10 @@ final class OutputPump: @unchecked Sendable {
             for await chunk in stream {
                 await writer?.write(chunk)
                 let shown = redactor.process(sanitizer.clean(chunk))
-                if !shown.isEmpty { output(shown) }
+                if !shown.isEmpty { output(shown); logStream?.add(shown) }
             }
             let rest = redactor.flush()
-            if !rest.isEmpty { output(rest) }
+            if !rest.isEmpty { output(rest); logStream?.add(rest) }
         }
     }
 

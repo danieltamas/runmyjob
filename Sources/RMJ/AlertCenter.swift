@@ -98,6 +98,8 @@ final class AlertCenter: NSObject, UNUserNotificationCenterDelegate {
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         guard let path = response.notification.request.content.userInfo["log"] as? String else { return }
-        await MainActor.run { _ = NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
+        // `<job id>.log` or `<job id>.mac.log`: the notification opens the run's report, not the file in another app.
+        let jobID = URL(fileURLWithPath: path).lastPathComponent.split(separator: ".").first.map(String.init) ?? ""
+        await MainActor.run { jobID.isEmpty ? _ = NSWorkspace.shared.open(URL(fileURLWithPath: path)) : ReportWindows.show(jobID: jobID) }
     }
 }

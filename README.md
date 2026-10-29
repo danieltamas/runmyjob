@@ -62,6 +62,9 @@ flowchart LR
   minutes; runners online, busy or unregistered; images; a stale registration gets a prune button.
 - **One list, 30 days, searchable.** Durations, waits and their reasons, local fallbacks, a failed run's log
   pulled the moment it fails, a rerun button.
+- **Optional log streaming.** Send every run's output, as it happens, to Loki, Datadog or Elasticsearch,
+  several at once, each limited to the tenants you name. Off until you add a sink; a small glyph in the
+  panel header shows when it is on and turns amber when a sink is behind. See [Log streaming](#log-streaming).
 - **Local always works.** No box, no tailnet, a failed sync: the command runs on your Mac and the
   ledger says why. A red test suite is never a reason to fall back.
 
@@ -130,6 +133,20 @@ then blocked with the `rmj run` form, so it lands on a box and in the panel. Cod
 `rmj mcp` is a read-only MCP server (jobs, logs, failures, routes), off until you switch it on in Settings > Agent
 access. Details in [docs/AGENT-API.md](docs/AGENT-API.md).
 
+## Log streaming
+
+Settings > Log streaming adds a sink: Loki, Datadog Logs or Elasticsearch/OpenSearch. A sink names the
+tenants it may receive (or `all`); output of any other tenant never reaches it. Every line carries the
+job, line number, repo, branch, agent and destination. Secrets are redacted and terminal escapes stripped
+before a line is written anywhere.
+
+<img src="docs/assets/log-streaming.png" alt="Log streaming settings: three sinks, one healthy, one catching up, one failing" width="560">
+
+Delivery is asynchronous and never holds a run. Lines go to a spool on disk per sink (`~/.rmj/spool/`),
+are sent in the background and deleted only after the ingestor accepted them; an ingestor that is down
+just means the spool grows (256 MB and 7 days at most) and drains when it is back. Keys live in the
+Keychain. Details: [docs/LOG-STREAMING.md](docs/LOG-STREAMING.md).
+
 ## The `rmj` command
 
 | Command | What it does |
@@ -141,6 +158,7 @@ access. Details in [docs/AGENT-API.md](docs/AGENT-API.md).
 | `rmj rerun <id>`, `rmj cancel <id>` | run it again, stop it |
 | `rmj destination setup <name>` | bring a box to ready (idempotent) |
 | `rmj hooks install\|status\|remove` | agent hooks and shims |
+| `rmj sinks`, `rmj sinks test <id>` | log sinks: state and what waits; send one test line |
 | `rmj mcp` | the MCP server over stdio |
 
 ## Build and test

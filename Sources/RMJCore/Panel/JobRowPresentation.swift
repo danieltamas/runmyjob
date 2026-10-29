@@ -62,6 +62,11 @@ public struct JobRowPresentation: Sendable, Equatable {
         public struct Segment: Sendable, Equatable {
             public let label: String
             public let seconds: TimeInterval
+
+            public init(label: String, seconds: TimeInterval) {
+                self.label = label
+                self.seconds = seconds
+            }
         }
 
         /// Queued, sync, run as a thin bar; a segment that has no measurement is absent.

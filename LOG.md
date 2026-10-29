@@ -230,3 +230,17 @@
 
 - Destinations take a `requires` list of programs and shells the box must provide; Setup checks each and fails with `missing on the box: zsh` and an install hint (docs/ROUTING.md). Builds before 0.1.1 reject a rules.json that has the key, so update first.
 - Pending as in 0.1.0: the second company (s1) scenario; `live` against a real box; the manual check of a failed job's log opened from its notification. The probe and the destination card do not show missing programs yet.
+
+## 2026-10-29 - log streaming (0.2.0)
+
+- Optional streaming of every run's output to Loki, Datadog or Elasticsearch/OpenSearch, several sinks at once (Settings > Log streaming, `rmj sinks`, docs/LOG-STREAMING.md). Each sink names its tenants or `all`; repo, branch, agent and destination travel with every line.
+- A disk spool per sink holds what is not yet ingested and drains empty (256 MB and 7 days at most, kept while the sink is paused, backoff and `Retry-After` honoured, rejected batches set aside). A run never waits more than 3 s for a sink.
+- A glyph in the panel header shows streaming is on (teal) or a sink is behind (amber). Keys are in the Keychain. GitHub runs are streamed only for failed jobs, once archived.
+- Checked: acceptance tests by Codex (42 across config, format, spool, drainer, pipeline, streamer); `scripts/sinks-check.sh` streams a 650-line `rmj run` to local Loki and Elasticsearch receivers. Datadog is pinned byte for byte by unit tests, not by a live receiver (its intake host is fixed). Codex review: docs/reviews/log-streaming-2026-10-29.md (4 P0 and 6 P1 fixed or accepted with reason, the rest listed open). `scripts/check.sh` 394 tests, `sinks: ok`. Second round (security persona, adversarial QA): docs/reviews/log-streaming-2026-10-29.md. Also: Open log is hidden for a queued job. Not run: `perf` with sinks on, a real Loki/Datadog/Elasticsearch account, the Keychain read by the installed CLI.
+
+## 2026-10-29 - run report window
+
+- The Log button (and a notification's Open log) now opens a Run report window, like Settings, instead of the log in another app. Left: result, where, timing and resources of the run (exit codes, queue wait, sync, run, avg CPU and memory, clock offset) and log counts. Right: the log with line numbers, lines colored by meaning (commands, errors, warnings, passes), search, All/Errors/Warnings filter, Copy log, Reveal; a running job's log follows live.
+- Terminal colors are stripped before display (logs are untrusted text), so colors come from what a line says (`LogClassifier`), not from the tool's own escapes.
+- Model: `RunReport`, `LogDocument`, `LogClassifier` in RMJCore; acceptance tests by Codex: `RunReportAcceptanceTests` (13).
+- Open: the report is shown for the ledger's data only; box jobs have no CPU and memory yet.

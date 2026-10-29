@@ -57,12 +57,16 @@ press.
    `gh`, the update check against this repository's releases, and the More apps list: one file and its
    icons from `raw.githubusercontent.com/danieltamas/registry`, validated before use (ASCII, at most 64 KiB,
    hosts and install commands on an allowlist, icons PNG 256 x 256 at most 64 KiB) and stored under
-   `~/.rmj/registry/`. Nothing else, no telemetry.
+   `~/.rmj/registry/`. Log streaming is the one path that carries job output off this Mac: it is off
+   until the owner adds a sink, goes only to the URL of that sink (https, or http to this Mac or a
+   tailnet address), and only for the tenants the sink names (a deny, tested). Lines are redacted and
+   stripped of terminal escapes before they reach the spool. Nothing else, no telemetry.
 
 ## Data kept on this Mac
 
 `~/.rmj` (mode 0700): `config.json`, `rules.json`, `rmj.sqlite` (30 days of jobs, events, probe
 samples, registrations seen), `logs/` (30 days of run logs, PAT values redacted, otherwise as
-printed, 2 GB cap). Removing the folder removes everything except the Keychain items, which
+printed, 2 GB cap). `spool/<sink>/` (log lines waiting for a sink, 0600, at most 256 MB and 7 days each), `log-sinks.json`
+(delivery counters and the last error, no output). Sink keys are Keychain items `rmj.sink.<id>`. Removing the folder removes everything except the Keychain items, which
 Settings > Destinations deletes per target, and the `.env` copies on the boxes, which Remove
 destination handles.

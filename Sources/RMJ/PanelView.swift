@@ -55,6 +55,11 @@ struct PanelView: View {
                     model.openSettings(.about)
                 }
             }
+            if model.streamIndicator != .off {
+                IconButton(symbol: "dot.radiowaves.up.forward", help: model.streamHelp, tint: model.streamIndicator == .failing ? Theme.warn : Theme.teal) {
+                    model.openSettings(.logs)
+                }
+            }
             IconButton(symbol: "gearshape", help: "Open Settings") { model.openSettings(model.settingsPane) }
             if model.snapshot.runningCount > 0 {
                 HStack(spacing: 5) {

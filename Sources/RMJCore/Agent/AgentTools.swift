@@ -16,7 +16,7 @@ extension MCPServer {
 
     // MARK: jobs
 
-    private func logEntries() async throws -> [String: LogEntry] {
+    private func logEntries() async throws -> [String: LogArchiveEntry] {
         let rows = try await archive.database.query("SELECT * FROM log_archive WHERE side = 'box'")
         return Dictionary(rows.compactMap(LogArchive.entry).map { ($0.jobID, $0) }, uniquingKeysWith: { first, _ in first })
     }

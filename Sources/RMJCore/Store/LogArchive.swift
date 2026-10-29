@@ -1,6 +1,6 @@
 import Foundation
 
-public struct LogEntry: Sendable, Equatable {
+public struct LogArchiveEntry: Sendable, Equatable {
     public enum Status: String, Sendable { case pending, available, unavailable }
 
     public let jobID: String
@@ -71,11 +71,11 @@ public struct LogArchive: Sendable {
         try await record(jobID: jobID, side: side, path: nil, bytes: 0, truncated: false, status: .unavailable, reason: reason, now: now)
     }
 
-    public func entry(jobID: String, side: String = "box") async throws -> LogEntry? {
+    public func entry(jobID: String, side: String = "box") async throws -> LogArchiveEntry? {
         try await database.query("SELECT * FROM log_archive WHERE job_id = ? AND side = ?", [.text(jobID), .text(side)]).first.flatMap(Self.entry)
     }
 
-    public func pending() async throws -> [LogEntry] {
+    public func pending() async throws -> [LogArchiveEntry] {
         try await database.query("SELECT * FROM log_archive WHERE status = 'pending' ORDER BY updated_at").compactMap(Self.entry)
     }
 
@@ -86,7 +86,7 @@ public struct LogArchive: Sendable {
         try await database.execute("UPDATE log_archive SET truncated = 1 WHERE job_id = ? AND side = ?", [.text(jobID), .text(side)])
     }
 
-    func record(jobID: String, side: String, path: String?, bytes: Int, truncated: Bool, status: LogEntry.Status,
+    func record(jobID: String, side: String, path: String?, bytes: Int, truncated: Bool, status: LogArchiveEntry.Status,
                 reason: String?, now: Date, replacing: Bool = false) async throws {
         let guardClause = replacing || status == .available ? "" : " WHERE log_archive.status != 'available'"
         try await database.execute("""
@@ -132,10 +132,10 @@ public struct LogArchive: Sendable {
         return directory.appendingPathComponent(side == "box" || side == "local" ? "\(jobID).log" : "\(jobID).\(side).log")
     }
 
-    static func entry(_ row: Row) -> LogEntry? {
+    static func entry(_ row: Row) -> LogArchiveEntry? {
         guard let jobID = row["job_id"]?.textValue, let side = row["side"]?.textValue,
-              let status = row["status"]?.textValue.flatMap(LogEntry.Status.init) else { return nil }
-        return LogEntry(jobID: jobID, side: side, path: row["path"]?.textValue, bytes: Int(row["bytes"]?.intValue ?? 0),
+              let status = row["status"]?.textValue.flatMap(LogArchiveEntry.Status.init) else { return nil }
+        return LogArchiveEntry(jobID: jobID, side: side, path: row["path"]?.textValue, bytes: Int(row["bytes"]?.intValue ?? 0),
                         truncated: row["truncated"]?.intValue == 1, status: status, reason: row["reason"]?.textValue)
     }
 }
@@ -170,7 +170,7 @@ public actor LogWriter {
 
     /// Completes the log (`complete`) or abandons a partial one. Returns the stored entry.
     @discardableResult
-    public func finish(complete: Bool, now: Date = Date()) async throws -> LogEntry? {
+    public func finish(complete: Bool, now: Date = Date()) async throws -> LogArchiveEntry? {
         if complete { append(redactor.flush()) }
         // Contents reach the disk before the final name does, and a failed flush is a failed log.
         do {

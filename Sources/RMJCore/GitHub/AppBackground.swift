@@ -9,6 +9,9 @@ public actor AppBackground {
 
     private let home: RMJHome
     private let environment: [String: String]
+    /// The sinks' drainers, rebuilt when the sink list or a secret changes; nil with every sink off.
+    private var streamer: LogStreamer?
+    private var streamerSignature = ""
 
     public init(environment: [String: String] = ProcessInfo.processInfo.environment) {
         self.environment = environment
@@ -26,6 +29,7 @@ public actor AppBackground {
         var archivedAt = Date.distantPast
         var tokens: (@Sendable (String) -> String?)?
         while !Task.isCancelled {
+            refreshStreamer()
             let store = RulesStore(home: home)
             if case .valid(let rules, _) = store.load() {
                 if let existing = poller {
@@ -57,8 +61,20 @@ public actor AppBackground {
                     boxesPolledAt = Date()
                 }
             }
+            await streamer?.drainAll()
             try? await Task.sleep(for: .seconds(5))
         }
+    }
+
+    /// The sinks' drainers follow the config: rebuilt when the list or a secret changed, gone when every sink is off.
+    private func refreshStreamer() {
+        let sinks = LogSinkStore.load(home: home).sinks
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        let signature = "\(LogSinkStore.revision(home: home))|" + String(decoding: (try? encoder.encode(sinks)) ?? Data(), as: UTF8.self)
+        guard signature != streamerSignature else { return }
+        streamerSignature = signature
+        streamer = LogStreamer(home: home, sinks: sinks)
     }
 
     /// A failed GitHub job's log is archived once, as soon as it is seen; a fetch that failed leaves a pending entry and is not retried here.
@@ -68,7 +84,8 @@ public actor AppBackground {
         for job in failed where fetched < 3 {
             if (try? await archive.entry(jobID: job.id, side: "local")) != nil { continue }
             fetched += 1
-            _ = await GitHubJobLog.archive(ledgerID: job.id, ledger: ledger, archive: archive, secrets: [], token: tokens)
+            let problem = await GitHubJobLog.archive(ledgerID: job.id, ledger: ledger, archive: archive, secrets: [], token: tokens)
+            if problem == nil, let document = LogDocument.load(jobID: job.id, home: home) { streamer?.shipArchived(job, document: document) }
         }
     }
 }
