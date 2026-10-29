@@ -256,3 +256,10 @@ Optional log streaming, the Run report window, and no Open log button on a queue
 - The footer's poll ages use the GitHub mark and a server glyph instead of words.
 - A run report for a job that printed nothing says so instead of showing an empty pane.
 - Checked: acceptance tests by Codex for the star logic (`RepoStarAcceptanceTests`, 6); `scripts/check.sh` 400 tests. Not verified: the in-place Update replacing a running install from an older build, the star click against GitHub from the installed app.
+
+## 2026-10-29 - release 0.4.0
+
+- A box that lacks a program a destination lists under `requires` is now shown on its card in the panel (a `missing` stat and a "Missing on the box" section with an install hint), not only at Setup. The periodic probe runs the check, so it appears within 30 s of the box changing.
+- Jobs on a box now have average CPU and memory in the Run report and in the log stream's closing line, like local jobs. The box script gains a `stats` command (it is re-shipped to the box on the next job); RMJ reads it every 10 s while the log streams. A run shorter than 10 s has no reading.
+- The "Star on GitHub" button no longer has a dismiss state in the code; an old `star_dismissed` key in config.json is ignored, so anyone who closed the button in a pre-release build sees it again.
+- Checked: acceptance tests by Codex (`MissingProgramsAcceptanceTests` 8, `BoxLoadAcceptanceTests` 10, `RepoStarAcceptanceTests` 7); `scripts/check.sh` 418 tests; `docker stats` output and the program check run by hand against ai-gamerina-eu. Not verified: a full job on a box with the new sampling, the missing stat on a real card, the in-place Update from an older build, the second company (s1) scenario.
