@@ -9,6 +9,7 @@
 #   go     <ulid> <name> <argv-json> -- <docker run args...>   start the container; prints the launch record
 #   tail   <ulid>                                  stream the log until the run ends; exit with its code
 #   log    <ulid>                                  print the whole log so far
+#   stats  <ulid>                                  the container's cpu and memory now: `<cpu%> <used> / <limit>` per container
 #   cancel <ulid>                                  remove the container by label; stop a waiter that has not started
 #   job    <ulid>                                  print "container <present|absent> <boot_id>" and the records that exist
 #   prune                                          drop records older than 30 days
@@ -136,6 +137,11 @@ case "${1:-}" in
     echo "now $(date +%s%3N)"
     for ext in launch rc meta; do [ -s "$logs/$ulid.$ext" ] && echo "$ext $(head -n1 "$logs/$ulid.$ext")"; done
     exit 0 ;;
+  stats)
+    shift; valid_ulid "$1"; ulid=$1
+    ids=$(docker ps -q --filter "label=rmj.job=$ulid" 2>/dev/null) || exit 1
+    [ -n "$ids" ] || exit 0
+    docker stats --no-stream --format '{{.CPUPerc}} {{.MemUsage}}' $ids; exit $? ;;
   prune) prune ;;
-  *) echo "usage: rx-run.sh begin|go|tail|log|cancel|job|prune" >&2; exit 2 ;;
+  *) echo "usage: rx-run.sh begin|go|tail|log|cancel|job|stats|prune" >&2; exit 2 ;;
 esac

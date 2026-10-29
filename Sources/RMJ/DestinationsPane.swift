@@ -17,7 +17,7 @@ final class BoxesModel: ObservableObject {
         let state = await TailnetState.read()
         let rules = (try? PanelLoader())?.rules()
         for (name, config) in rules?.destinations ?? [:] where config.enabled {
-            probes[name] = await DestinationProbe().probe(DestinationTarget(alias: config.sshAlias, peerID: config.peerID), tailnet: state)
+            probes[name] = await DestinationProbe().probe(DestinationTarget(alias: config.sshAlias, peerID: config.peerID, requires: config.requires ?? []), tailnet: state)
         }
         tailnet = state
         inventory = BoxInventory(tailnet: state, rules: rules, probes: probes, now: Date())

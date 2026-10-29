@@ -60,13 +60,15 @@ public struct RunEngine: Sendable {
     private let now: @Sendable () -> Date
     private let profiles: ProfileStore
     private let streamer: LogStreamer?
+    private let boxLoadInterval: Duration
 
     /// `output` gets the job's output, already cleaned of terminal escapes; `notice` gets rmj's own messages.
     public init(ledger: Ledger, archive: LogArchive, router: Router, boxes: BoxDirectory, probes: ProbeProvider, secrets: [String] = [],
                 output: @escaping @Sendable (Data) -> Void, notice: @escaping @Sendable (String) -> Void,
-                profiles: ProfileStore = ProfileStore(home: RMJHome()), streamer: LogStreamer? = nil, now: @escaping @Sendable () -> Date = { Date() }) {
+                profiles: ProfileStore = ProfileStore(home: RMJHome()), streamer: LogStreamer? = nil, boxLoadInterval: Duration = .seconds(10), now: @escaping @Sendable () -> Date = { Date() }) {
         self.profiles = profiles
         self.streamer = streamer
+        self.boxLoadInterval = boxLoadInterval
         self.ledger = ledger
         self.archive = archive
         self.router = router
@@ -214,7 +216,10 @@ public struct RunEngine: Sendable {
         let stream = await openStream(id)
         let pump = OutputPump(writer: try? archive.writer(jobID: id, side: "box", secrets: secrets), output: output, secrets: secrets, logStream: stream)
         var streamed = true
+        let recorder = LoadRecorder(sample: { await client.load(ulid: id) })
+        await recorder.start(first: boxLoadInterval, every: boxLoadInterval)
         do { try await client.tail(boxJob, output: pump.add) } catch { streamed = false }
+        let load = await recorder.stop()
         await pump.close()
         let asked = now()
         guard let record = try? await client.record(ulid: id), let result = record.result else {
@@ -233,7 +238,7 @@ public struct RunEngine: Sendable {
         if offset == nil { offset = await probes.latest(for: destination)?.clockOffsetMS }
         if let job = try? await ledger.job(id) {
             _ = await Reconciler.settle(job, record: record, result: result, ledger: ledger, archive: archive, now: now(),
-                                        macElapsedMS: ms, clockOffsetMS: offset)
+                                        macElapsedMS: ms, clockOffsetMS: offset, load: load)
         }
         let state: JobState = result.cancelled ? .cancelled : result.code == 0 ? .done : .failed
         let settled = try? await ledger.job(id)

@@ -89,6 +89,11 @@ public struct SSHBoxClient: BoxClient {
         guard result.status == 0 else { throw BoxFailure("cannot read the log (exit \(result.status))") }
     }
 
+    public func load(ulid: String) async -> JobLoad? {
+        guard let result = try? await box(["stats", ulid], timeout: .seconds(20)), result.status == 0 else { return nil }
+        return BoxLoad.parse(String(decoding: result.stdout, as: UTF8.self))
+    }
+
     public func cancel(ulid: String) async throws {
         let result = try await box(["cancel", ulid])
         guard result.status == 0 else { throw BoxFailure("cancel failed (exit \(result.status))") }

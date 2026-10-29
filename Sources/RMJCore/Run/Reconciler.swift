@@ -128,7 +128,7 @@ public struct Reconciler: Sendable {
 
     /// Records the outcome the box wrote. Shared with the engine, which settles live runs the same way.
     static func settle(_ job: JobRecord, record: BoxRecord, result: BoxRecord.Result, ledger: Ledger, archive: LogArchive,
-                       now: Date, macElapsedMS: Int? = nil, clockOffsetMS: Int? = nil) async -> Bool {
+                       now: Date, macElapsedMS: Int? = nil, clockOffsetMS: Int? = nil, load: JobLoad? = nil) async -> Bool {
         let state: JobState = result.cancelled ? .cancelled : result.code == 0 ? .done : .failed
         var patch = JobPatch()
         patch.exitCode = result.code
@@ -138,6 +138,8 @@ public struct Reconciler: Sendable {
         patch.boxExit = record.meta?.exit
         patch.macElapsedMS = macElapsedMS
         patch.clockOffsetMS = clockOffsetMS
+        patch.avgCPU = load?.cpuPercent
+        patch.avgMemoryBytes = load?.memoryBytes
         var detail: String?
         if case .startFailed(let reason)? = record.launch { detail = "container start failed: \(reason)" }
         let moved = (try? await ledger.advance(job.id, to: state, at: now, detail: detail, patch: patch)) ?? false

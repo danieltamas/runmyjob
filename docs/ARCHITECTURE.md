@@ -95,7 +95,9 @@ green.
    differ (checksum); take the worktree lock through `rx-run.sh`; sync (`syncing`, its own
    duration); write the argv file; launch and read the launch record (`running`, or local
    fallback on `start-failed`); stream to the terminal, the local log copy and the panel's tail;
-   settle from `.rc` and `.meta` (`done` or `failed`).
+   while it streams, `rx-run.sh stats` is read every 10 s (`BoxLoad` parses the `docker stats` line) and the
+   average goes into the job row (`avg_cpu`, `avg_memory_bytes`) like a local run's; settle from `.rc` and `.meta`
+   (`done` or `failed`).
 4. Local: run the argv (or `bash -c` in `--shell` mode) with the Mac's environment, location
    `local` with the reason and `environment: mac`, same streaming, same ledger, log written to the
    archive directly.

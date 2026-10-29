@@ -1,7 +1,7 @@
 import Foundation
 
 /// The "star RMJ on GitHub" offer in the panel footer. It asks GitHub once whether the owner's `gh` account has
-/// starred the repository, remembers a yes in `config.json` (`starred_repo`, or `star_dismissed`) and never asks again.
+/// starred the repository, remembers a yes in `config.json` (`starred_repo`) and never asks again.
 /// Starring is the owner's click and nothing else: the call goes through their own logged-in `gh`.
 public struct RepoStar: Sendable {
     public enum Standing: Equatable, Sendable { case starred, notStarred, unknown }
@@ -11,7 +11,6 @@ public struct RepoStar: Sendable {
 
     public static let repo = "danieltamas/runmyjob"
     private static let starredKey = "starred_repo"
-    private static let dismissedKey = "star_dismissed"
 
     private let home: RMJHome
     private let gh: GH
@@ -21,10 +20,10 @@ public struct RepoStar: Sendable {
         self.gh = gh
     }
 
-    /// Whether the footer offers the star: not starred, not dismissed. Read from disk only.
+    /// Whether the footer offers the star: not starred yet. Read from disk only.
     public func shouldOffer() -> Bool {
         let config = ConfigFile.read(home)
-        return config?[Self.starredKey] as? Bool != true && config?[Self.dismissedKey] as? Bool != true
+        return config?[Self.starredKey] as? Bool != true
     }
 
     /// Asks GitHub once; a yes is remembered. No `gh`, no login or no answer is `unknown`: nothing is offered then.
@@ -47,9 +46,6 @@ public struct RepoStar: Sendable {
         try? ConfigFile.merge([Self.starredKey: true], home: home)
         return true
     }
-
-    /// "Not now, ever": the offer is gone for good.
-    public func dismiss() { try? ConfigFile.merge([Self.dismissedKey: true], home: home) }
 
     static func httpStatus(_ output: String) -> Int? {
         guard let line = output.split(whereSeparator: \.isNewline).first, line.hasPrefix("HTTP/") else { return nil }

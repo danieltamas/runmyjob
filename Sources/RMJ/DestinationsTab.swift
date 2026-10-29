@@ -59,6 +59,7 @@ struct DestinationCard: View {
             if let slots = value("rx slots") { stat("rx", slots.value, tone: slots.tone) }
             if let memory = value("memory budget") { stat("mem", memory.value.replacingOccurrences(of: " of ", with: "/"), tone: memory.tone) }
             if let load = value("load") { stat("load", load.value, tone: load.tone) }
+            if !card.missingPrograms.isEmpty { stat("missing", card.missingPrograms.joined(separator: ", "), tone: .warn) }
             if !card.runners.isEmpty {
                 let healthy = card.runners.filter { $0.tone == .ok }.count
                 stat("runners", "\(healthy)/\(card.runners.count)", tone: healthy == card.runners.count ? .plain : .warn)
@@ -87,6 +88,13 @@ struct DestinationCard: View {
             }
             if !card.runners.isEmpty {
                 section("Runners") { ForEach(card.runners, id: \.name) { runner($0) } }
+            }
+            if !card.missingPrograms.isEmpty {
+                section("Missing on the box") {
+                    ForEach(card.missingPrograms, id: \.self) { Text($0).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.warn) }
+                    Text("Install them on the box, for example: apt-get install -y \(card.missingPrograms.joined(separator: " "))")
+                        .font(.meta).foregroundStyle(Theme.textTertiary).fixedSize(horizontal: false, vertical: true)
+                }
             }
             if !card.images.isEmpty { section("Images (\(card.images.count))") { images } }
             footer

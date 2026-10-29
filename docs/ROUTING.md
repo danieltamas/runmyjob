@@ -53,7 +53,7 @@ The file is strict JSON (no comments; D8). The shipped default:
 | `memory_budget` | rx limits plus what the runners use now must stay under it (a 52 GB box that also runs ollama on the GPU). Runner caps are not summed: on `ai-eu-1` they add up to 32 g, which would leave no room under a 36 g budget |
 | `rx_defaults` | Container limits for rules that set none |
 | `runner_stack`, `runner_targets` | Where the vendored compose stack lives and which repos or orgs its runners register for |
-| `requires` | Programs and shells the box must provide, e.g. `["bash", "zsh", "bun"]`. Setup checks each with `command -v` after docker and rsync and fails with `missing on the box: zsh` and an install hint; names are letters, digits and `._+-`, no duplicates |
+| `requires` | Programs and shells the box must provide, e.g. `["bash", "zsh", "bun"]`. Setup checks each with `command -v` after docker and rsync and fails with `missing on the box: zsh` and an install hint; names are letters, digits and `._+-`, no duplicates. The periodic probe runs the same check and the destination card shows what is missing (a `missing` stat and a "Missing on the box" section) |
 
 Known today: `ai-eu-1` is a WSL2 VM (24 CPUs, 52 GB) that also runs ollama on the GPU; it
 froze once (2026-10-27, 14:43-14:49) under a cold Rust build while an rx DuckDB build had run an

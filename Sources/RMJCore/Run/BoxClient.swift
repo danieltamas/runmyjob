@@ -169,6 +169,12 @@ public protocol BoxClient: Sendable {
     func pullLog(ulid: String, output: @escaping @Sendable (Data) -> Void) async throws
     /// Removes the container by its label and stops a waiter that has not started.
     func cancel(ulid: String) async throws
+    /// The job's container cpu and memory right now; nil when the box cannot say.
+    func load(ulid: String) async -> JobLoad?
+}
+
+public extension BoxClient {
+    func load(ulid: String) async -> JobLoad? { nil }
 }
 
 public protocol BoxFactory: Sendable {

@@ -6,11 +6,14 @@ public struct DestinationTarget: Sendable, Equatable {
     public let alias: String
     public let peerID: String?
     public let literalAddress: String?
+    /// Programs the box must provide (`requires` of its rules.json entry); the probe reports which are missing.
+    public let requires: [String]
 
-    public init(alias: String, peerID: String?, literalAddress: String? = nil) {
+    public init(alias: String, peerID: String?, literalAddress: String? = nil, requires: [String] = []) {
         self.alias = alias
         self.peerID = peerID
         self.literalAddress = literalAddress
+        self.requires = requires
     }
 }
 

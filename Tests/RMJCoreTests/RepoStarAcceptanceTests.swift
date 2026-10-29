@@ -69,19 +69,11 @@ struct RepoStarAcceptanceTests {
         }
     }
 
-    @Test func dismissalPersistsAndPreventsGitHubChecks() async throws {
+    @Test func legacyConfigurationStillOffersStar() throws {
         let f = try RepoStarFixture(); defer { f.remove() }
-        try Data(#"{"max_jobs":3}"#.utf8).write(to: f.config)
-        let calls = RepoStarCalls()
-        let subject = f.subject(calls, output: "HTTP/2.0 204 No Content")
-        subject.dismiss()
-        #expect(!subject.shouldOffer())
-        _ = await subject.refresh()
-        let reloaded = f.subject(calls, output: "")
-        #expect(!reloaded.shouldOffer())
-        _ = await reloaded.refresh()
-        #expect(await calls.arguments.isEmpty)
-        #expect(try f.readConfig()["max_jobs"] as? Int == 3)
+        try Data(#"{"star_dismissed":true}"#.utf8).write(to: f.config)
+        let subject = f.subject(RepoStarCalls(), output: "")
+        #expect(subject.shouldOffer())
     }
 }
 
