@@ -248,3 +248,11 @@ Optional log streaming, the Run report window, and no Open log button on a queue
 - Terminal colors are stripped before display (logs are untrusted text), so colors come from what a line says (`LogClassifier`), not from the tool's own escapes.
 - Model: `RunReport`, `LogDocument`, `LogClassifier` in RMJCore; acceptance tests by Codex: `RunReportAcceptanceTests` (13).
 - Open: the report is shown for the ledger's data only; box jobs have no CPU and memory yet.
+
+## 2026-10-29 - release 0.3.0
+
+- Update in About now installs the new release in place, like MacMax and Bton: it runs the installer bundled in the app, quits RMJ and reopens it. A failure is shown in About and written to `~/.rmj/update.log`. Before, the button opened the release page.
+- A glowing "Star on GitHub" button in the panel footer stars danieltamas/runmyjob with your own `gh` account, shows "Starring..." while it works, and is gone for good once starred (remembered as `starred_repo` in config.json, no check after that). It shows only when `gh` is logged in and the repo is not starred yet; it has no close button.
+- The footer's poll ages use the GitHub mark and a server glyph instead of words.
+- A run report for a job that printed nothing says so instead of showing an empty pane.
+- Checked: acceptance tests by Codex for the star logic (`RepoStarAcceptanceTests`, 6); `scripts/check.sh` 400 tests. Not verified: the in-place Update replacing a running install from an older build, the star click against GitHub from the installed app.

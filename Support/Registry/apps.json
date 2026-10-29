@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated": "2026-10-29T11:03:54Z",
+  "updated": "2026-10-29T11:56:41Z",
   "apps": [
     {
       "id": "macmax",
@@ -77,10 +77,10 @@
         "light": "#1F6FD1"
       },
       "latest": {
-        "version": "0.1.1",
-        "tag": "v0.1.1",
-        "publishedAt": "2026-10-29T07:57:48Z",
-        "url": "https://github.com/danieltamas/runmyjob/releases/tag/v0.1.1"
+        "version": "0.2.0",
+        "tag": "v0.2.0",
+        "publishedAt": "2026-10-29T11:51:21Z",
+        "url": "https://github.com/danieltamas/runmyjob/releases/tag/v0.2.0"
       }
     },
     {
