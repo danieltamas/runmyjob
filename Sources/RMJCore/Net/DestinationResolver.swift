@@ -6,14 +6,17 @@ public struct DestinationTarget: Sendable, Equatable {
     public let alias: String
     public let peerID: String?
     public let literalAddress: String?
-    /// Programs the box must provide (`requires` of its rules.json entry); the probe reports which are missing.
+    /// Programs every image used here must contain (`requires` of its rules.json entry).
     public let requires: [String]
+    /// The images the rules send to this destination; the probe runs each to look for the programs.
+    public let images: [String]
 
-    public init(alias: String, peerID: String?, literalAddress: String? = nil, requires: [String] = []) {
+    public init(alias: String, peerID: String?, literalAddress: String? = nil, requires: [String] = [], images: [String] = []) {
         self.alias = alias
         self.peerID = peerID
         self.literalAddress = literalAddress
         self.requires = requires
+        self.images = images
     }
 }
 

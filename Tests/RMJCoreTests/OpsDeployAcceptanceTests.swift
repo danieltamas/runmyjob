@@ -245,7 +245,8 @@ struct OpsDeployAcceptanceTests {
         #expect(images[0].created == "2026-10-25" && images[0].age == "2 days ago")
         let dockerfile = Data("FROM fixture\n".utf8)
         try await RunnerImages.build(name: "rust", dockerfile: dockerfile, shell: shell)
-        #expect(shell.calls.last?.script == "docker build -t rx-rust -")
+        let hash = SHA256.hash(data: dockerfile).map { String(format: "%02x", $0) }.joined()
+        #expect(shell.calls.last?.script == "docker build --label rmj.dockerfile=\(hash) -t rx-rust -")
         #expect(shell.calls.last?.input == dockerfile)
         let count = shell.calls.count
         for bad in ["bad name", "bad/name"] {

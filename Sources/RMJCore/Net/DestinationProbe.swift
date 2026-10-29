@@ -51,8 +51,8 @@ public struct DestinationProbeResult: Sendable, Equatable {
     public let uptime: TimeInterval?
     public let clockOffsetMS: Int?
     public let probedAt: Date
-    /// The `requires` programs the box lacks, in the order required; nil when none were required or the box did not report.
-    public var missingPrograms: [String]?
+    /// What the images used here lack, per image; nil when there was nothing to look for or the box did not report.
+    public var missingTools: [MissingTools]?
 
     public var dockerReady: Bool { docker.value != nil }
     public var rsyncReady: Bool { rsync.value != nil }
@@ -93,13 +93,13 @@ public struct DestinationProbe: Sendable {
         guard case .online(let address) = availability else { return .without(availability, at: now) }
         do {
             let began = ContinuousClock.now
-            let output = try await transport.run(address: address, alias: target.alias, script: Self.script(requires: target.requires), timeout: Self.timeout)
+            let output = try await transport.run(address: address, alias: target.alias, script: Self.script(requires: target.requires, images: target.images), timeout: Self.timeout)
             let elapsed = began.duration(to: ContinuousClock.now)
             let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
             guard output.status == 0 else {
                 return .without(.unreachable("ssh exit \(output.status): \(UntrustedText.clean(Self.firstLine(output.stderr)))"), at: now)
             }
-            guard let result = Self.parse(String(decoding: output.stdout, as: UTF8.self), address: address, probedAt: now, callSeconds: seconds, requires: target.requires) else {
+            guard let result = Self.parse(String(decoding: output.stdout, as: UTF8.self), address: address, probedAt: now, callSeconds: seconds, requires: target.requires, images: target.images) else {
                 return .without(.unreachable("incomplete probe output"), at: now)
             }
             return result
@@ -133,20 +133,30 @@ public struct DestinationProbe: Sendable {
     /// Each step reports its own exit status in its header, its output is capped, and `@@end`
     /// proves the script ran to the end: a truncated or silent reply is never read as healthy.
     static let bodyCap = 16384
-    static let script = script(requires: [])
+    static let script = script(requires: [], images: [])
 
-    /// The `tools` step lists `missing:<name>` for each required program the box lacks; a name that is not a plain
-    /// program name never reaches the box.
-    static func script(requires: [String]) -> String {
-        let tools = requires.filter(DestinationConfig.isProgramName)
-        let extra = tools.isEmpty ? [] : [(name: "tools", command: tools.map { "command -v '\($0)' >/dev/null 2>&1 || echo missing:\($0)" }.joined(separator: "; "))]
+    /// The images worth looking into, each with the programs it must hold; an absent image prints nothing.
+    private static func checks(requires: [String], images: [String]) -> [(image: String, programs: [String])] {
+        images.filter(BuildEnvironments.isImageName).compactMap { image in
+            let programs = BuildEnvironments.required(in: image, requires: requires)
+            return programs.isEmpty ? nil : (image, programs)
+        }
+    }
+
+    /// The `tools` step runs each image once and lists `missing:<image>:<program>`; names that are not plain
+    /// image or program names never reach the box.
+    static func script(requires: [String], images: [String]) -> String {
+        let looks = checks(requires: requires, images: images).map {
+            "if docker image inspect \($0.image) >/dev/null 2>&1; then \(BuildEnvironments.checkCommand(image: $0.image, programs: $0.programs)); fi"
+        }
+        let extra = looks.isEmpty ? [] : [(name: "tools", command: looks.joined(separator: "; "))]
         return (steps + extra).map { step in
             "out=$(\(step.command) 2>&1); rc=$?; printf '@@\(step.name) rc=%s\\n' \"$rc\"; printf '%s\\n' \"$out\" | head -c \(bodyCap); echo"
         }.joined(separator: "\n") + "\necho @@end"
     }
 
     /// nil unless the output has the closing marker.
-    static func parse(_ text: String, address: String, probedAt now: Date, callSeconds: TimeInterval, requires: [String] = []) -> DestinationProbeResult? {
+    static func parse(_ text: String, address: String, probedAt now: Date, callSeconds: TimeInterval, requires: [String] = [], images: [String] = []) -> DestinationProbeResult? {
         let lineCap = 200
         var bytes = [String: Int](), truncated = Set<String>()
         var sections = [String: (rc: Int, lines: [String])](), current: String?, ended = false
@@ -190,11 +200,14 @@ public struct DestinationProbe: Sendable {
         let clock = number("clock").map { ($0 / 1_000_000 - clockReference.timeIntervalSince1970 * 1000).rounded() }
             .flatMap { abs($0) < 1e12 ? Int($0) : nil }
         let disk = reading("disk").value.map { $0.split(separator: " ").compactMap { Int($0) } }.flatMap { $0.count == 2 ? ($0[0], $0[1]) : nil }
-        let required = requires.filter(DestinationConfig.isProgramName)
-        var missing: [String]?
-        if !required.isEmpty, let tools = sections["tools"], tools.rc == 0, !truncated.contains("tools") {
+        var missing: [MissingTools]?
+        let looked = checks(requires: requires, images: images)
+        if !looked.isEmpty, let tools = sections["tools"], tools.rc == 0, !truncated.contains("tools") {
             let reported = Set(lines("tools"))
-            missing = required.filter { reported.contains("missing:\($0)") }
+            missing = looked.compactMap { check in
+                let absent = check.programs.filter { reported.contains("missing:\(check.image):\($0)") }
+                return absent.isEmpty ? nil : MissingTools(image: check.image, programs: absent)
+            }
         }
         var result = DestinationProbeResult(
             availability: .online(address: address), docker: reading("docker"), rsync: reading("rsync"),
@@ -203,7 +216,7 @@ public struct DestinationProbe: Sendable {
             memoryTotalMB: reading("memtotal").value.flatMap { Int($0) }, diskTotalMB: disk?.0, diskFreeMB: disk?.1,
             osName: reading("osname").value.map { String($0.prefix(60)) },
             load: number("load"), bootID: reading("boot").value, uptime: number("uptime"), clockOffsetMS: clock, probedAt: now)
-        result.missingPrograms = missing
+        result.missingTools = missing
         return result
     }
 

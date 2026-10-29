@@ -86,7 +86,13 @@ public struct DestinationSetup: Sendable {
         var report = Report()
         report.steps.append(await prerequisites())
         guard report.isReady else { return report }
-        if config.roles.contains("rx") { report.steps += await imageSteps() }
+        if config.roles.contains("rx") {
+            let built = await imageSteps()
+            report.steps += built
+            if !built.contains(where: { $0.name == "images" && $0.outcome == .failed }) {
+                report.steps += await toolSteps(skipping: Set(built.filter { $0.outcome == .failed }.map(\.name)))
+            }
+        }
         guard report.isReady else { return report }
         if config.roles.contains("runners") {
             let deploy = await deployStep()
@@ -101,22 +107,13 @@ public struct DestinationSetup: Sendable {
         if let bad = required.first(where: { !DestinationConfig.isProgramName($0) }) {
             return Step(name: "tools", outcome: .failed, detail: "requires entry \"\(bad)\" is not a program name", hint: "Fix requires in rules.json")
         }
-        let tools = required.map { "command -v '\($0)' >/dev/null 2>&1 || echo missing:\($0)" }
+        // Jobs run in containers: the box itself needs docker and rsync, nothing else of a job's toolchain.
         do {
-            let script = (["docker info >/dev/null 2>&1 && echo docker-ok; rsync --version >/dev/null 2>&1 && echo rsync-ok"] + tools).joined(separator: "; ")
-            let output = try await shell.run(script, input: nil, timeout: .seconds(30))
+            let output = try await shell.run("docker info >/dev/null 2>&1 && echo docker-ok; rsync --version >/dev/null 2>&1 && echo rsync-ok", input: nil, timeout: .seconds(30))
             let text = String(decoding: output.stdout, as: UTF8.self)
             guard text.contains("docker-ok") else { return Step(name: "docker", outcome: .failed, detail: "docker is not usable for this user", hint: "Install docker and add the ssh user to the docker group") }
             guard text.contains("rsync-ok") else { return Step(name: "rsync", outcome: .failed, detail: "rsync is missing", hint: "Install rsync on the box") }
-            // A dropped ssh session ends nonzero after docker-ok and rsync-ok: never read it as "nothing missing".
-            guard required.isEmpty || output.status == 0 else { return Step(name: "tools", outcome: .failed, detail: "the tool check ended early (exit \(output.status))", hint: "Check ssh to the box") }
-            let lines = Set(text.split(separator: "\n").map(String.init))
-            let missing = required.filter { lines.contains("missing:\($0)") }
-            guard missing.isEmpty else {
-                return Step(name: "tools", outcome: .failed, detail: "missing on the box: \(missing.joined(separator: ", "))",
-                            hint: "Install them on the box, for example: apt-get install -y \(missing.joined(separator: " "))")
-            }
-            return Step(name: "prerequisites", outcome: .unchanged, detail: required.isEmpty ? "docker and rsync present" : "docker, rsync, \(required.joined(separator: ", ")) present", hint: nil)
+            return Step(name: "prerequisites", outcome: .unchanged, detail: "docker and rsync present", hint: nil)
         } catch {
             return Step(name: "prerequisites", outcome: .failed, detail: "\(error)", hint: "Check ssh to the box")
         }
@@ -127,23 +124,58 @@ public struct DestinationSetup: Sendable {
         do { present = Set(try await RunnerImages.list(shell: shell).map(\.repository)) } catch {
             return [Step(name: "images", outcome: .failed, detail: "\(error)", hint: nil)]
         }
+        let wanted = neededImages.sorted().filter { $0.hasPrefix("rx-") }
+        let dockerfiles = Dictionary(uniqueKeysWithValues: wanted.compactMap { image in
+            images.flatMap { try? Data(contentsOf: $0.appendingPathComponent("\(image.dropFirst(3))/Dockerfile")) }.map { (image, $0) }
+        })
+        let labels: [String: String]
+        do { labels = try await RunnerImages.fingerprints(of: wanted.filter { present.contains($0) && dockerfiles[$0] != nil }, shell: shell) } catch {
+            return [Step(name: "images", outcome: .failed, detail: "\(error)", hint: nil)]
+        }
         var steps: [Step] = []
-        for image in neededImages.sorted() where image.hasPrefix("rx-") {
+        for image in wanted {
             let short = String(image.dropFirst(3))
-            if present.contains(image) {
+            let outdated = present.contains(image) && dockerfiles[image].map { labels[image] != RunnerImages.fingerprint($0) } == true
+            if present.contains(image), !outdated {
                 steps.append(Step(name: image, outcome: .unchanged, detail: "image present", hint: nil))
                 continue
             }
-            guard let file = images?.appendingPathComponent("\(short)/Dockerfile"), let data = try? Data(contentsOf: file) else {
+            guard let data = dockerfiles[image] else {
                 steps.append(Step(name: image, outcome: .failed, detail: "no Dockerfile for \(image) ships with RMJ", hint: "Build \(image) on the box by hand"))
                 continue
             }
             notice("building \(image) on \(name)...")
             do {
                 try await RunnerImages.build(name: short, dockerfile: data, shell: shell)
-                steps.append(Step(name: image, outcome: .changed, detail: "built", hint: nil))
+                steps.append(Step(name: image, outcome: .changed, detail: outdated ? "rebuilt: its Dockerfile changed" : "built", hint: nil))
             } catch {
                 steps.append(Step(name: image, outcome: .failed, detail: "\(error)", hint: nil))
+            }
+        }
+        return steps
+    }
+
+    /// Runs each image the rules use once and looks for the programs it must hold: the toolchain lives in the image, never on the box.
+    private func toolSteps(skipping failed: Set<String>) async -> [Step] {
+        var steps: [Step] = []
+        for image in neededImages.sorted() where image.hasPrefix("rx-") && BuildEnvironments.isImageName(image) && !failed.contains(image) {
+            let programs = BuildEnvironments.required(in: image, requires: config.requires ?? [])
+            guard !programs.isEmpty else { continue }
+            let name = "tools in \(image)"
+            do {
+                let output = try await shell.run(BuildEnvironments.checkCommand(image: image, programs: programs), input: nil, timeout: .seconds(120))
+                guard output.status == 0 else {
+                    steps.append(Step(name: name, outcome: .failed, detail: "the image would not start (exit \(output.status))", hint: "Run docker run --rm --entrypoint sh \(image) on the box to see why"))
+                    continue
+                }
+                let lines = Set(String(decoding: output.stdout, as: UTF8.self).split(separator: "\n").map(String.init))
+                let missing = programs.filter { lines.contains("missing:\(image):\($0)") }
+                steps.append(missing.isEmpty
+                    ? Step(name: name, outcome: .unchanged, detail: "\(programs.joined(separator: ", ")) present", hint: nil)
+                    : Step(name: name, outcome: .failed, detail: "missing in \(image): \(missing.joined(separator: ", "))",
+                           hint: "Add them to the Dockerfile of \(image) (Support/box/images) and run Setup again; RMJ rebuilds an image whose Dockerfile changed"))
+            } catch {
+                steps.append(Step(name: name, outcome: .failed, detail: "\(error)", hint: "Check ssh to the box"))
             }
         }
         return steps

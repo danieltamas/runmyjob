@@ -3,68 +3,90 @@ import Testing
 import RMJCore
 
 struct MissingProgramsAcceptanceTests {
-    @Test func reportsOnlyMissingRequiredProgramsInRequiredOrder() async {
-        let (result, _) = await probe(["zsh", "jq"], section: "@@tools rc=0\nmissing:zsh\n")
-        #expect(result.missingPrograms == ["zsh"])
-        let (ordered, _) = await probe(["zsh", "jq"], section: "@@tools rc=0\nmissing:jq\nmissing:zsh\n")
-        #expect(ordered.missingPrograms == ["zsh", "jq"])
+    @Test func reportsMissingToolsInCatalogThenRequiredOrder() async {
+        let (result, _) = await probe(["rx-rust"], requires: ["jq", "zsh", "jq"],
+            section: "@@tools rc=0\nmissing:rx-rust:jq\nmissing:rx-rust:zsh\n")
+        #expect(result.missingTools == [MissingTools(image: "rx-rust", programs: ["zsh", "jq"])])
+    }
+
+    @Test func onlyImagesWithGapsAreListedInImageOrder() async {
+        let (second, _) = await probe(["rx-rust", "rx-node"], section: "@@tools rc=0\nmissing:rx-node:bun\n")
+        #expect(second.missingTools == [MissingTools(image: "rx-node", programs: ["bun"])])
+        let (both, _) = await probe(["rx-node", "rx-rust"],
+            section: "@@tools rc=0\nmissing:rx-rust:zsh\nmissing:rx-node:bun\n")
+        #expect(both.missingTools == [MissingTools(image: "rx-node", programs: ["bun"]),
+                                    MissingTools(image: "rx-rust", programs: ["zsh"])])
     }
 
     @Test func emptySuccessfulToolsSectionMeansAllPresent() async {
-        let (result, _) = await probe(["zsh", "jq"], section: "@@tools rc=0\n")
-        #expect(result.missingPrograms == [])
+        let (result, _) = await probe(["rx-rust"], section: "@@tools rc=0\n")
+        #expect(result.missingTools == [])
     }
 
-    @Test func noRequirementsOmitsCheckAndReportsNil() async throws {
-        let (result, spy) = await probe([], section: nil)
-        #expect(result.missingPrograms == nil)
-        let script = try #require(await spy.scripts.first)
-        #expect(!script.contains("@@tools"))
+    @Test func noImagesOrNoRequiredToolsOmitsCheck() async throws {
+        for images in [[], ["ubuntu"], ["x;y"]] as [[String]] {
+            let (result, spy) = await probe(images, section: nil)
+            #expect(result.missingTools == nil)
+            let script = try #require(await spy.scripts.first)
+            #expect(!script.contains("@@tools") && !script.contains("docker run"))
+        }
+        let (result, spy) = await probe([], requires: ["jq"], section: nil)
+        #expect(result.missingTools == nil)
+        #expect(await spy.scripts.allSatisfy { !$0.contains("docker run") && !$0.contains("@@tools") })
     }
 
-    @Test func invalidProgramNamesNeverEnterScript() async throws {
-        let (_, spy) = await probe(["zsh", "z sh; rm", "jq"], section: "@@tools rc=0\n")
+    @Test func unknownImageUsesExplicitRequirements() async throws {
+        let (result, spy) = await probe(["ubuntu"], requires: ["jq"], section: "@@tools rc=0\nmissing:ubuntu:jq\n")
+        #expect(result.missingTools == [MissingTools(image: "ubuntu", programs: ["jq"])])
+        #expect(try #require(await spy.scripts.first).contains("@@tools"))
+    }
+
+    @Test func invalidNamesNeverEnterScriptAndContainersAreHardened() async throws {
+        let (_, spy) = await probe(["rx-rust", "rx-node", "x;y"], requires: ["jq", "z sh; rm"], section: "@@tools rc=0\n")
         let script = try #require(await spy.scripts.first)
-        #expect(!script.contains("z sh; rm"))
-        #expect(script.contains("zsh"))
+        #expect(!script.contains("x;y") && !script.contains("z sh; rm"))
         #expect(script.contains("jq"))
-        #expect(script.contains("@@tools"))
+        for fragment in ["docker run --rm", "--network none", "--cap-drop ALL",
+                         "--security-opt no-new-privileges", "--entrypoint sh", "docker image inspect"] {
+            #expect(script.components(separatedBy: fragment).count - 1 == 2)
+        }
+        #expect(script.contains("rx-rust") && script.contains("rx-node"))
     }
 
-    @Test func failedToolsSectionReportsUnknown() async {
-        let (result, _) = await probe(["zsh"], section: "@@tools rc=1\nmissing:zsh\n")
-        #expect(result.missingPrograms == nil)
+    @Test func failedAbsentAndTruncatedToolsSectionsReportUnknown() async {
+        for section in [nil, "@@tools rc=1\nmissing:rx-rust:zsh\n"] as [String?] {
+            let (result, _) = await probe(["rx-rust"], section: section)
+            #expect(result.missingTools == nil)
+        }
+        let (result, _) = await probe(["rx-rust"], section: "@@tools rc=0\nmissing:rx-rust:zsh\n", truncated: true)
+        #expect(result.missingTools == nil)
     }
 
-    @Test func absentToolsSectionReportsUnknown() async {
-        let (result, _) = await probe(["zsh"], section: nil)
-        #expect(result.missingPrograms == nil)
+    @Test func unrequestedImageAndProgramReportsAreIgnored() async {
+        let (result, _) = await probe(["rx-rust"], section: "@@tools rc=0\nmissing:ghost:zsh\nmissing:rx-rust:notrequired\n")
+        #expect(result.missingTools == [])
     }
 
-    @Test func unrequiredMissingProgramIsIgnored() async {
-        let (result, _) = await probe(["zsh"], section: "@@tools rc=0\nmissing:ghost\n")
-        #expect(result.missingPrograms == [])
-    }
-
-    @Test func cardShowsMissingProgramsAndDefaultsToEmptyWithoutProbe() async throws {
-        let (result, _) = await probe(["zsh"], section: "@@tools rc=0\nmissing:zsh\n")
-        #expect(result.missingPrograms == ["zsh"])
+    @Test func cardShowsMissingToolsAndDefaultsToEmptyWithoutProbe() async throws {
+        let (result, _) = await probe(["rx-rust"], section: "@@tools rc=0\nmissing:rx-rust:zsh\n")
         var input = try #require(DemoShots.snapshot().destinations.first)
         input.probe = result
-        #expect(DestinationCardPresentation(input, now: result.probedAt).missingPrograms == ["zsh"])
+        #expect(DestinationCardPresentation(input, now: result.probedAt).missingTools == result.missingTools ?? [])
         input.probe = nil
-        #expect(DestinationCardPresentation(input, now: result.probedAt).missingPrograms == [])
+        #expect(DestinationCardPresentation(input, now: result.probedAt).missingTools == [])
     }
 
-    private func probe(_ requires: [String], section: String?) async -> (DestinationProbeResult, ProgramsTransport) {
+    private func probe(_ images: [String], requires: [String] = [], section: String?, truncated: Bool = false)
+        async -> (DestinationProbeResult, ProgramsTransport) {
         let path = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Fixtures/tailnet/running.json").path
         let state = await TailnetState.read(environment: ["RMJ_TAILSCALE_FIXTURE": path], now: runNow)
-        let output = programsOutput().replacingOccurrences(of: "@@end", with: (section ?? "") + "@@end")
+        var output = programsOutput().replacingOccurrences(of: "@@end", with: (section ?? "") + "@@end")
+        if truncated { output = output.replacingOccurrences(of: "@@end", with: "") }
         let spy = ProgramsTransport(output: output)
-        let target = DestinationTarget(alias: "ai-eu-1", peerID: "n-ai-acme-1", requires: requires)
+        let target = DestinationTarget(alias: "ai-eu-1", peerID: "n-ai-acme-1", requires: requires, images: images)
         let result = await DestinationProbe(transport: spy).probe(target, tailnet: state, now: state.readAt)
-        #expect(result.availability.isAvailable)
+        if !truncated { #expect(result.availability.isAvailable) }
         return (result, spy)
     }
 }

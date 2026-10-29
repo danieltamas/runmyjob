@@ -119,31 +119,22 @@ struct RequiresManifestAcceptanceTests {
             let step = try #require(report.steps.first)
             #expect(step.name == "prerequisites")
             #expect(step.outcome == .unchanged)
-            #expect(step.detail == (names?.isEmpty == false
-                ? "docker, rsync, zsh, bun present" : "docker and rsync present"))
+            #expect(step.detail == "docker and rsync present")
             #expect(step.hint == nil)
             #expect(report.isReady && !report.changed)
             #expect(await shell.scripts.count == 1)
         }
     }
 
-    @Test func missingProgramsStopSetupInManifestOrder() async throws {
-        for missing in [["zsh"], ["zsh", "bun"]] {
-            var config = try manifestConfig()
-            config.requires = ["zsh", "bun"]
-            config.roles = ["rx", "runners"]
-            let output = "docker-ok\nrsync-ok\n" + missing.map { "missing:\($0)" }.joined(separator: "\n")
-            let shell = ManifestSetupShell(output: output)
-            let report = await manifestSetup(shell, config: config).run()
-            #expect(report.steps.count == 1)
-            let step = try #require(report.steps.first)
-            #expect(step.name == "tools" && step.outcome == .failed)
-            #expect(step.detail == "missing on the box: " + missing.joined(separator: ", "))
-            #expect(step.hint == "Install them on the box, for example: apt-get install -y " + missing.joined(separator: " "))
-            #expect(!report.isReady && !report.changed)
-            #expect(await shell.scripts.count == 1)
-            #expect(await shell.syncs == 0)
-        }
+    @Test func hostMissingProgramOutputDoesNotStopSetup() async throws {
+        var config = try manifestConfig()
+        config.requires = ["zsh", "bun"]
+        let shell = ManifestSetupShell(output: "docker-ok\nrsync-ok\nmissing:zsh\nmissing:bun")
+        let report = await manifestSetup(shell, config: config).run()
+        #expect(report.steps.count == 1)
+        #expect(report.steps.first?.name == "prerequisites")
+        #expect(report.steps.first?.detail == "docker and rsync present")
+        #expect(report.isReady && !report.changed)
     }
 
     @Test func dockerAndRsyncFailuresTakePrecedenceOverMissingPrograms() async throws {
@@ -165,7 +156,7 @@ struct RequiresManifestAcceptanceTests {
         }
     }
 
-    @Test func requiredProgramsAreQuotedInThePrerequisitesScript() async throws {
+    @Test func requiredProgramsNeverEnterThePrerequisitesScript() async throws {
         var config = try manifestConfig()
         config.requires = ["zsh", "bun", "python3.12", "g++"]
         let shell = ManifestSetupShell()
@@ -173,11 +164,8 @@ struct RequiresManifestAcceptanceTests {
         let scripts = await shell.scripts
         #expect(scripts.count == 1)
         let script = try #require(scripts.first)
-        for name in config.requires ?? [] {
-            #expect(script.contains("command -v '\(name)'"), "Required names must be shell quoted")
-            #expect(!script.contains("command -v \(name)"))
-            #expect(script.contains("missing:\(name)"))
-        }
+        #expect(!script.contains("command -v"))
+        for name in config.requires ?? [] { #expect(!script.contains(name)) }
     }
 
     @Test func nilAndEmptyManifestsPreserveTheOriginalScriptByteForByte() async throws {

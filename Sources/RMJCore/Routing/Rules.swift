@@ -75,9 +75,11 @@ public struct Rule: Codable, Sendable, Equatable {
     public var coldMarker: [String: String]?
     public var memory: String?
     public var cpus: Int?
+    /// `false` runs the job's container without the default limits (dropped capabilities, no new privileges, a process cap, the box user).
+    public var hardening: Bool?
 
     enum CodingKeys: String, CodingKey {
-        case name, match, to, advisory, image, profile, volumes, memory, cpus
+        case name, match, to, advisory, image, profile, volumes, memory, cpus, hardening
         case coldMarker = "cold_marker"
     }
 }

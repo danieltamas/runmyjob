@@ -212,7 +212,7 @@ final class PanelModel: ObservableObject {
         guard Date().timeIntervalSince(probedAt) >= (wanted ? 30 : Self.backgroundProbeInterval), let rules = loader.rules() else { return }
         probedAt = Date()
         for (name, config) in rules.destinations where config.enabled {
-            let target = DestinationTarget(alias: config.sshAlias, peerID: config.peerID, requires: config.requires ?? [])
+            let target = DestinationTarget(alias: config.sshAlias, peerID: config.peerID, requires: config.requires ?? [], images: rules.images(for: name))
             guard case .online(let address) = DestinationResolver.resolve(target, in: state) else { continue }
             probes[name] = await DestinationProbe().probe(target, tailnet: state)
             if config.roles.contains("runners"), let list = try? await RunnerContainer.list(shell: SSHOpsShell(address: address, alias: config.sshAlias)) {

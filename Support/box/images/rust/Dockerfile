@@ -5,9 +5,10 @@
 FROM rust:1.96-bookworm
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      git pkg-config libssl-dev ca-certificates \
+      bash zsh git jq curl pkg-config libssl-dev ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# zsh and bash because repo scripts and tests call them: jobs run in this container, never on the box itself.
 # `just check` recipes commonly need both; one slow compile at image build, never per run.
 RUN cargo install --locked just cargo-deny && rm -rf /usr/local/cargo/registry \
     && mkdir -p /usr/local/cargo/registry /usr/local/cargo/git

@@ -87,8 +87,8 @@ public struct DestinationCardPresentation: Sendable, Equatable {
     public let rxContainers: [String]
     public let runners: [RunnerLine]
     public let images: [Line]
-    /// Programs the destination requires that the last probe did not find on the box.
-    public let missingPrograms: [String]
+    /// Programs the images used here lack, as the last probe found them.
+    public let missingTools: [MissingTools]
     public let lastProbe: String
     public let actions: [ActionState]
 
@@ -103,7 +103,7 @@ public struct DestinationCardPresentation: Sendable, Equatable {
         rxContainers = input.rxJobs.filter { $0.state == .running || $0.state == .syncing }.map(\.id)
         runners = input.runners.map { Self.runnerLine($0, latest: input.latestRunner) }
         images = input.images.map { Line(label: $0, value: "", tone: .plain, stale: nil) }
-        missingPrograms = input.probe?.missingPrograms ?? []
+        missingTools = input.probe?.missingTools ?? []
         lastProbe = input.probe.map { "probed \(PanelFormat.age(now.timeIntervalSince($0.probedAt)))" } ?? "never probed"
         let reason = Self.offlineReason(input.availability)
         actions = [

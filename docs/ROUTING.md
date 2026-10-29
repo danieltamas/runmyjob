@@ -53,7 +53,7 @@ The file is strict JSON (no comments; D8). The shipped default:
 | `memory_budget` | rx limits plus what the runners use now must stay under it (a 52 GB box that also runs ollama on the GPU). Runner caps are not summed: on `ai-eu-1` they add up to 32 g, which would leave no room under a 36 g budget |
 | `rx_defaults` | Container limits for rules that set none |
 | `runner_stack`, `runner_targets` | Where the vendored compose stack lives and which repos or orgs its runners register for |
-| `requires` | Programs and shells the box must provide, e.g. `["bash", "zsh", "bun"]`. Setup checks each with `command -v` after docker and rsync and fails with `missing on the box: zsh` and an install hint; names are letters, digits and `._+-`, no duplicates. The periodic probe runs the same check and the destination card shows what is missing (a `missing` stat and a "Missing on the box" section) |
+| `requires` | Programs every image used on this destination must contain, e.g. `["jq", "unzip"]`, on top of what each shipped image already guarantees (`BuildEnvironments`: bash, zsh, git and its own toolchain). Jobs run in containers, so this is checked by running the image, never on the box: Setup fails with `missing in rx-rust: zsh` and a hint to add it to the image's Dockerfile, and the probe shows the same on the destination card. Names are letters, digits and `._+-`, no duplicates |
 
 Known today: `ai-eu-1` is a WSL2 VM (24 CPUs, 52 GB) that also runs ollama on the GPU; it
 froze once (2026-10-27, 14:43-14:49) under a cold Rust build while an rx DuckDB build had run an
@@ -233,8 +233,17 @@ differs.
   presence and the current `boot_id`. Container gone, no `.rc`, boot changed: `lost: destination
   rebooted`, partial log pulled. `.rc` present: settle with box timing. Container present:
   still running, keep streaming from the log file.
-- Images are built on the box from `Support/box/images/<name>/Dockerfile` (`rx-rust` today;
-  `rx-node` when bun and node are routed).
+- Images are built on the box from `Support/box/images/<name>/Dockerfile` (`rx-rust`, `rx-node`). The build
+  carries the label `rmj.dockerfile=<sha256 of the Dockerfile>`; Setup rebuilds an image whose label differs from
+  the Dockerfile RMJ ships (or has none), so changing a Dockerfile in RMJ fixes every box on its next Setup. The box
+  itself carries docker, rsync, ssh and bash only; every other tool a job needs is inside the image. Swift packages
+  that import AppKit, SwiftUI, `os`, CryptoKit or SystemConfiguration need the macOS SDK and run on the Mac.
+- Container limits for every job, unless the rule sets `"hardening": false`: `--cap-drop ALL`,
+  `--security-opt no-new-privileges`, `--pids-limit 4096`, and `--user @box` (the box script turns it into the
+  box user's `uid:gid`, so the synced tree stays writable; a profile's own `user` replaces it). Memory and cpus come
+  from the rule or `rx_defaults`; the network is docker's default because builds fetch dependencies. The shipped images and
+  their cache volumes belong to uid 1000: a box whose ssh user is not uid 1000 sets `"hardening": false` on the rule or a
+  profile `user` of 1000:1000.
 
 ## Logs and retention
 

@@ -24,7 +24,13 @@ struct DockerPlan {
         let home = config.home
         let cpus = rule?.cpus ?? config.rxDefaults?.cpus ?? 4
         let memory = rule?.memory ?? config.rxDefaults?.memory ?? "8g"
-        var options = ["--cpus", String(cpus), "--memory", memory, "-v", "\(directory):/work", "-w", subdirectory.isEmpty ? "/work" : "/work/" + subdirectory]
+        var options = ["--cpus", String(cpus), "--memory", memory]
+        // The container is the boundary: no capabilities, no privilege gain, a bounded process count, and the box user
+        // (`@box`, which the box script resolves) so the synced tree stays writable. A profile's own user wins.
+        let hardened = rule?.hardening != false
+        if hardened { options += ["--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "4096"] }
+        if hardened, rule?.profile == nil { options += ["--user", "@box"] }
+        options += ["-v", "\(directory):/work", "-w", subdirectory.isEmpty ? "/work" : "/work/" + subdirectory]
         let repoName = repo?.split(separator: "/").last.map(String.init) ?? "repo"
         var volumes = (rule?.volumes ?? []).map { $0.replacingOccurrences(of: "{repo}", with: repoName) }
         var image = rule?.image
@@ -37,7 +43,7 @@ struct DockerPlan {
             }
             image = profile.image
             if let network = profile.network { options += ["--network", network] }
-            if let user = profile.user { options += ["--user", user] }
+            if let user = profile.user { options += ["--user", user] } else if hardened { options += ["--user", "@box"] }
             for (key, value) in (profile.env ?? [:]).sorted(by: { $0.key < $1.key }) { options += ["-e", "\(key)=\(value)"] }
             volumes += (profile.volumes ?? []).map { $0.replacingOccurrences(of: "{home}", with: home) }
             if let lock = profile.lock { locks.append("\(home)/rx/.\(lock).lock") }

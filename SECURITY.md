@@ -49,7 +49,8 @@ press.
    offline or an address that is not a tailnet address all route the job to the Mac, with the
    reason recorded. Nothing is retried on a different transport.
 8. **What runs on a box runs as the box's ssh user,** in a container with the limits from the
-   rules, on the box's Docker. RMJ does not escalate there and installs nothing; the runner stack
+   rules (memory, cpus, and by default no capabilities, no privilege gain, a process cap and the box user; a rule
+   can switch the last four off with `hardening: false`), on the box's Docker. RMJ does not escalate there and installs nothing; the runner stack
    it deploys is the vendored compose stack whose security model is in
    `Support/runner-stack/README.md` (ephemeral runners, no PAT in a job's environment, no Docker
    socket, no inbound port).

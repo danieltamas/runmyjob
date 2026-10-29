@@ -56,6 +56,13 @@ waiter() {
   local -a args=()
   while IFS= read -r -d '' word; do args+=("$word"); done < "$logs/$ulid.spec"
   local name=${args[0]}; args=("${args[@]:1}")
+  # `--user @box` is the box user: the synced tree is theirs and must stay writable. Only docker's own options are
+  # looked at (they end at --entrypoint), never the job's command.
+  local i
+  for ((i = 0; i < ${#args[@]}; i++)); do
+    [ "${args[i]}" = --entrypoint ] && break
+    if [ "${args[i]}" = --user ] && [ "${args[i+1]:-}" = @box ]; then args[i+1]="$(id -u):$(id -g)"; break; fi
+  done
   if ! out=$(docker run -d --name "$name" --label rx --label "rmj.job=$ulid" "${args[@]}" 2>&1); then
     printf 'start-failed %s\n' "$(printf '%s' "$out" | tr '\n' ' ' | cut -c1-300)" > "$logs/$ulid.launch"
     printf '125 start-failed\n' > "$logs/$ulid.rc"

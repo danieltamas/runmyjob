@@ -23,6 +23,7 @@ Sources/RMJCore/         everything testable; imports Foundation, Darwin, Securi
                          Hermes), Shims
   Agent/                 MCPServer (JSON-RPC over stdio), Tools, Redaction (escapes, invisible Unicode)
   Release/               RMJRelease (standing, canUpdate), ReleaseCheck
+  Ops/BuildEnvironments  the shipped toolchain images (rx-rust, rx-node) and the programs each must hold
   GitHub/RepoStar        the footer's star offer: asks `gh` once, remembers a star in config.json
   Support/               ProcessRunner, Executables, RMJHome, Clock, SafeFile, Keychain
 Sources/RMJ/             SwiftUI app: RMJApp, AppStore, PanelView, JobsTab, DestinationsTab,

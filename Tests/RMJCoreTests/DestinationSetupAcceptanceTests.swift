@@ -52,6 +52,8 @@ private actor SetupShell: OpsShell {
         let text: String
         if script.contains("docker info") { text = prerequisites }
         else if script.contains("docker images") { text = images }
+        else if script.contains("docker image inspect") { text = "" }
+        else if script.contains("docker run") { text = "" }
         else if script.contains("docker ps -a") { text = containers }
         else if script.contains("sha256sum"), script.contains("| cut ") {
             if script.contains("/infra/gh-runners/.rmj-services'") {
@@ -74,7 +76,7 @@ private actor SetupShell: OpsShell {
                 envCurrent = true
             }
             text = ""
-        } else if script.contains("docker compose") || script.hasPrefix("docker build -t rx-") {
+        } else if script.contains("docker compose") || script.hasPrefix("docker build --label rmj.dockerfile=") {
             text = ""
         } else {
             Issue.record("Unexpected fake command: \(script)")
@@ -161,9 +163,11 @@ struct DestinationSetupAcceptanceTests {
         #expect(report.steps.first { $0.name == "rx-rust" }?.outcome == .unchanged)
         #expect(report.steps.first { $0.name == "rx-node" }?.outcome == .changed)
         #expect(report.steps.first { $0.name == "rx-missing" }?.outcome == .failed)
-        #expect(Set(report.steps.map(\.name)) == ["prerequisites", "rx-rust", "rx-node", "rx-missing"])
+        #expect(Set(report.steps.map(\.name)) == ["prerequisites", "rx-rust", "rx-node", "rx-missing",
+            "tools in rx-rust", "tools in rx-node"])
         let builds = await shell.scripts.filter { $0.hasPrefix("docker build") }
-        #expect(builds == ["docker build -t rx-node -"])
+        let hash = SHA256.hash(data: Data("FROM scratch\n".utf8)).map { String(format: "%02x", $0) }.joined()
+        #expect(builds == ["docker build --label rmj.dockerfile=\(hash) -t rx-node -"])
         #expect(await shell.inputs == [Data("FROM scratch\n".utf8)])
         #expect(!report.isReady && report.changed)
     }

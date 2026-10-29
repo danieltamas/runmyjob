@@ -13,7 +13,7 @@ public enum RulesValidation {
                         "rx_defaults", "runner_stack", "runner_targets", "requires"],
         "rx_defaults": ["cpus", "memory"],
         "tenant": ["owners", "repos", "shared"],
-        "rule": ["name", "match", "to", "advisory", "image", "profile", "volumes", "cold_marker", "memory", "cpus"],
+        "rule": ["name", "match", "to", "advisory", "image", "profile", "volumes", "cold_marker", "memory", "cpus", "hardening"],
         "match": ["owner", "repo", "tenant", "path", "command", "has"],
     ]
 
