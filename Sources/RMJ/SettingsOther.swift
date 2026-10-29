@@ -84,8 +84,8 @@ struct AboutPane: View {
                             updateLine
                         }
                         Spacer()
-                        if case .available(let release) = model.updateStatus, let url = release.url {
-                            PillButton(title: "Update", symbol: "arrow.up.circle", prominent: true) { NSWorkspace.shared.open(url) }
+                        if case .available = model.updateStatus {
+                            PillButton(title: updating ? "Updating..." : "Update", symbol: "arrow.up.circle", prominent: true, disabled: updating) { model.installUpdate() }
                         }
                     }
                 }
@@ -136,7 +136,22 @@ struct AboutPane: View {
         return line
     }
 
+    private var updating: Bool { if case .updating = model.updateState { true } else { false } }
+
     @ViewBuilder private var updateLine: some View {
+        if case .failed(let reason) = model.updateState {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("The update did not finish: \(reason)").font(.system(size: 11.5)).foregroundStyle(Theme.warn)
+                if case .available(let release) = model.updateStatus, let url = release.url {
+                    LinkButton(title: "Open the release on GitHub") { NSWorkspace.shared.open(url) }
+                }
+            }
+        } else if case .updating(let version) = model.updateState {
+            Text("Installing \(version): RMJ quits and reopens when it is done.").font(.system(size: 11.5)).foregroundStyle(Theme.teal)
+        } else { releaseLine }
+    }
+
+    @ViewBuilder private var releaseLine: some View {
         switch model.updateStatus {
         case .available(let release):
             Text("Version \(release.version) is available.").font(.system(size: 11.5)).foregroundStyle(Theme.teal)

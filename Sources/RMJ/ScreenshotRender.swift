@@ -64,6 +64,11 @@ enum ScreenshotRender {
             let newer = PanelModel(snapshot: DemoShots.snapshot(stress: stress))
             newer.updateStatus = .available(ReleaseInfo(version: "9.9.9", url: nil))
             try write(PanelView(model: newer), to: url("jobs-update"))
+            let starred = PanelModel(snapshot: DemoShots.snapshot(stress: stress))
+            starred.starOffer = true
+            try write(PanelView(model: starred), to: url("jobs-star"))
+            starred.starring = true
+            try write(PanelView(model: starred), to: url("jobs-starring"))
             var empty = DemoShots.snapshot(stress: stress)
             empty.jobs = []
             try write(PanelView(model: PanelModel(snapshot: empty)), to: url("jobs-empty"))

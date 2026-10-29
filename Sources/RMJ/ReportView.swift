@@ -268,7 +268,14 @@ struct ReportView: View {
     }
 
     @ViewBuilder private var logPane: some View {
-        if let log = model.log {
+        if let log = model.log, log.lines.isEmpty, !log.isLive {
+            VStack(spacing: 6) {
+                Text("The command printed nothing").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.textSecondary)
+                Text("RMJ keeps everything a command writes; this one wrote no output, so there is nothing to show.")
+                    .font(.system(size: 11.5)).foregroundStyle(Theme.textTertiary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let log = model.log {
             ReportLogView(lines: visible, query: query, structure: "\(filter.rawValue)|\(query)", revision: log.byteCount,
                           follow: follow && log.isLive, truncated: log.truncated,
                           landOn: log.isLive ? nil : log.lines.first { $0.kind == .error }?.number)

@@ -23,10 +23,12 @@ Sources/RMJCore/         everything testable; imports Foundation, Darwin, Securi
                          Hermes), Shims
   Agent/                 MCPServer (JSON-RPC over stdio), Tools, Redaction (escapes, invisible Unicode)
   Release/               RMJRelease (standing, canUpdate), ReleaseCheck
+  GitHub/RepoStar        the footer's star offer: asks `gh` once, remembers a star in config.json
   Support/               ProcessRunner, Executables, RMJHome, Clock, SafeFile, Keychain
 Sources/RMJ/             SwiftUI app: RMJApp, AppStore, PanelView, JobsTab, DestinationsTab,
                          RoutingTab, HistoryTab, SettingsView + panes, MenuBarIcon, Theme, Looks,
-                         Components, Updater, LoginItem, Notifier, DemoShots
+                         Components, Updater, UpdateInstaller (runs the bundled install.sh), StarOffer,
+                         LoginItem, Notifier, DemoShots
 Sources/RMJCLI/          `rmj` (installed name): run, route, jobs, job, log, failures, destinations,
                          runners, rerun, hooks, guard, prune, mcp
 Tests/RMJCoreTests/      <Topic>AcceptanceTests (Codex), <Topic>RegressionTests, Fixtures/

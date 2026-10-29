@@ -52,6 +52,42 @@ final class PanelModel: ObservableObject {
     @Published var streamHelp = ""
     /// What the last release check found; the header shows an arrow when it is `.available`.
     @Published var updateStatus: UpdateStatus = .unknown
+    @Published var updateState: UpdateState = .idle
+    /// The footer's "Star on GitHub": shown only while GitHub said the repository is not starred yet.
+    @Published var starOffer = false
+    @Published var starring = false
+    private let repoStar = RepoStar(home: RMJHome())
+
+    func refreshStarOffer() {
+        guard repoStar.shouldOffer() else { return }
+        Task { [repoStar] in
+            let standing = await repoStar.refresh()
+            starOffer = standing == .notStarred
+        }
+    }
+
+    func starRepo() {
+        guard !starring else { return }
+        starring = true
+        Task { [repoStar] in
+            let starred = await repoStar.star()
+            starring = false
+            if starred { starOffer = false; say("Starred. Thank you.") } else { say("Could not star it: is gh logged in?") }
+        }
+    }
+
+    /// Installs the release the About pane offers, in place, like the curl installer does.
+    func installUpdate() {
+        guard case .available(let release) = updateStatus, updateState == .idle || isFailed(updateState) else { return }
+        updateState = .updating(release.version)
+        do {
+            try UpdateInstaller.start(version: release.version) { [weak self] reason in
+                Task { @MainActor in self?.updateState = .failed(reason) }
+            }
+        } catch { updateState = .failed((error as? UpdateError)?.reason ?? "\(error)") }
+    }
+
+    private func isFailed(_ state: UpdateState) -> Bool { if case .failed = state { true } else { false } }
     let alerts = AlertCenter()
     let moreApps = MoreAppsModel()
 
@@ -79,6 +115,7 @@ final class PanelModel: ObservableObject {
     static func live() -> PanelModel {
         let model = PanelModel(snapshot: PanelSnapshot(now: Date(), tailnet: TailnetState(standing: .unknown("not read yet"), magicDNSEnabled: false, peers: [], readAt: Date())))
         model.start()
+        model.refreshStarOffer()
         return model
     }
 

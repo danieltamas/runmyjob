@@ -149,11 +149,14 @@ struct PanelView: View {
             if let notice = model.notice {
                 Text(notice).font(.meta).foregroundStyle(Theme.textSecondary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
             } else {
-            HStack(spacing: 10) {
-                ForEach(footer.polls, id: \.self) { Text($0).font(.meta).foregroundStyle(Theme.textTertiary).lineLimit(1) }
+                if model.starOffer { StarOffer(starring: model.starring, star: model.starRepo).layoutPriority(1) }
+                HStack(spacing: 10) {
+                    ForEach(Array(footer.polls.enumerated()), id: \.offset) { index, poll in
+                        PollAge(github: index == 0, age: poll.split(separator: " ", maxSplits: 1).last.map(String.init) ?? poll)
+                    }
                     .help("GitHub is polled every 15 s while a job is queued or running and every 120 s (300 s for quiet repos) otherwise; boxes every 30 s")
-                if let budget = footer.rateBudget { Text(budget).font(.meta).foregroundStyle(Theme.warn).lineLimit(1) }
-            }
+                    if let budget = footer.rateBudget { Text(budget).font(.meta).foregroundStyle(Theme.warn).lineLimit(1) }
+                }
             }
             Spacer(minLength: 8)
             AppControls()
@@ -170,5 +173,23 @@ private struct SettingsOpener: View {
 
     var body: some View {
         Color.clear.onAppear { model.showSettingsWindow = { openSettings() } }
+    }
+}
+
+/// How long ago GitHub or the boxes were last polled: the GitHub mark or the server glyph, then the age.
+private struct PollAge: View {
+    let github: Bool
+    let age: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if github {
+                GitHubMark().fill(Theme.textTertiary).frame(width: 10, height: 10)
+            } else {
+                Image(systemName: "server.rack").font(.system(size: 9.5))
+            }
+            Text(age).font(.meta).lineLimit(1)
+        }
+        .foregroundStyle(Theme.textTertiary)
     }
 }
