@@ -87,7 +87,7 @@ struct JobExpansion: View {
 
     private var buttons: some View {
         HStack(spacing: 8) {
-            ChipButton(title: "Open log") { JobActions.perform(.log, on: row, model: model) }
+            if row.state != .queued { ChipButton(title: "Open log") { JobActions.perform(.log, on: row, model: model) } }
             if row.detail.canCancel { ChipButton(title: "Cancel", destructive: true) { JobActions.cancel(row, model: model) } }
             if row.state.isSettledOrLost { ChipButton(title: "Rerun") { JobActions.perform(.rerun, on: row, model: model) } }
             if let url = row.detail.url { ChipButton(title: "Open on GitHub") { NSWorkspace.shared.open(url) } }
