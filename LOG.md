@@ -231,6 +231,10 @@
 - Destinations take a `requires` list of programs and shells the box must provide; Setup checks each and fails with `missing on the box: zsh` and an install hint (docs/ROUTING.md). Builds before 0.1.1 reject a rules.json that has the key, so update first.
 - Pending as in 0.1.0: the second company (s1) scenario; `live` against a real box; the manual check of a failed job's log opened from its notification. The probe and the destination card do not show missing programs yet.
 
+## 2026-10-29 - release 0.2.0
+
+Optional log streaming, the Run report window, and no Open log button on a queued job. Details in the two entries below. Builds before 0.2.0 ignore the `log_sinks` key in config.json, so update first.
+
 ## 2026-10-29 - log streaming (0.2.0)
 
 - Optional streaming of every run's output to Loki, Datadog or Elasticsearch/OpenSearch, several sinks at once (Settings > Log streaming, `rmj sinks`, docs/LOG-STREAMING.md). Each sink names its tenants or `all`; repo, branch, agent and destination travel with every line.
