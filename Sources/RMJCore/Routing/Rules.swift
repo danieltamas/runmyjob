@@ -30,11 +30,21 @@ public struct DestinationConfig: Codable, Sendable, Equatable {
     public var rxDefaults: Defaults?
     public var runnerStack: String?
     public var runnerTargets: [String]?
+    /// Programs and shells the box must provide (`["bash", "zsh", "bun"]`); checked when the box is set up.
+    public var requires: [String]?
+
+    /// A name that is safe to put in a shell word: ASCII letters, digits and `._+-`, starting with a letter or digit.
+    public static func isProgramName(_ name: String) -> Bool {
+        let alphanumeric = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+        guard let first = name.first, alphanumeric.contains(first), name.utf8.count <= 64 else { return false }
+        return name.allSatisfy { alphanumeric.contains($0) || "._+-".contains($0) }
+    }
 
     enum CodingKeys: String, CodingKey {
         case enabled, tenant, roles, home
         case peerID = "peer_id", sshAlias = "ssh_alias", maxJobs = "max_jobs", memoryBudget = "memory_budget"
         case rxDefaults = "rx_defaults", runnerStack = "runner_stack", runnerTargets = "runner_targets"
+        case requires
     }
 }
 

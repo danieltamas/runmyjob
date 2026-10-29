@@ -10,7 +10,7 @@ public enum RulesValidation {
     private static let schema: [String: Set<String>] = [
         "root": ["destinations", "tenants", "rules"],
         "destination": ["enabled", "peer_id", "ssh_alias", "tenant", "roles", "home", "max_jobs", "memory_budget",
-                        "rx_defaults", "runner_stack", "runner_targets"],
+                        "rx_defaults", "runner_stack", "runner_targets", "requires"],
         "rx_defaults": ["cpus", "memory"],
         "tenant": ["owners", "repos", "shared"],
         "rule": ["name", "match", "to", "advisory", "image", "profile", "volumes", "cold_marker", "memory", "cpus"],
@@ -33,6 +33,11 @@ public enum RulesValidation {
     static func validate(_ rules: Rules, profileExists: (String) -> Bool) throws {
         var names = Set<String>()
         for (name, destination) in rules.destinations.sorted(by: { $0.key < $1.key }) {
+            var seen = Set<String>()
+            for program in destination.requires ?? [] {
+                guard DestinationConfig.isProgramName(program) else { throw RulesError(message: "destination \(name): requires \"\(program)\" is not a program name") }
+                guard seen.insert(program).inserted else { throw RulesError(message: "destination \(name): requires lists \"\(program)\" twice") }
+            }
             guard destination.maxJobs > 0 else { throw RulesError(message: "destination \(name): max_jobs must be positive") }
             guard MemorySize.parse(destination.memoryBudget) != nil else { throw RulesError(message: "destination \(name): memory_budget \"\(destination.memoryBudget)\" is not a size") }
             if let memory = destination.rxDefaults?.memory, (MemorySize.parse(memory)?.bytes ?? 0) <= 0 {

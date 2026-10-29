@@ -97,12 +97,26 @@ public struct DestinationSetup: Sendable {
     }
 
     private func prerequisites() async -> Step {
+        let required = config.requires ?? []
+        if let bad = required.first(where: { !DestinationConfig.isProgramName($0) }) {
+            return Step(name: "tools", outcome: .failed, detail: "requires entry \"\(bad)\" is not a program name", hint: "Fix requires in rules.json")
+        }
+        let tools = required.map { "command -v '\($0)' >/dev/null 2>&1 || echo missing:\($0)" }
         do {
-            let output = try await shell.run("docker info >/dev/null 2>&1 && echo docker-ok; rsync --version >/dev/null 2>&1 && echo rsync-ok", input: nil, timeout: .seconds(30))
+            let script = (["docker info >/dev/null 2>&1 && echo docker-ok; rsync --version >/dev/null 2>&1 && echo rsync-ok"] + tools).joined(separator: "; ")
+            let output = try await shell.run(script, input: nil, timeout: .seconds(30))
             let text = String(decoding: output.stdout, as: UTF8.self)
             guard text.contains("docker-ok") else { return Step(name: "docker", outcome: .failed, detail: "docker is not usable for this user", hint: "Install docker and add the ssh user to the docker group") }
             guard text.contains("rsync-ok") else { return Step(name: "rsync", outcome: .failed, detail: "rsync is missing", hint: "Install rsync on the box") }
-            return Step(name: "prerequisites", outcome: .unchanged, detail: "docker and rsync present", hint: nil)
+            // A dropped ssh session ends nonzero after docker-ok and rsync-ok: never read it as "nothing missing".
+            guard required.isEmpty || output.status == 0 else { return Step(name: "tools", outcome: .failed, detail: "the tool check ended early (exit \(output.status))", hint: "Check ssh to the box") }
+            let lines = Set(text.split(separator: "\n").map(String.init))
+            let missing = required.filter { lines.contains("missing:\($0)") }
+            guard missing.isEmpty else {
+                return Step(name: "tools", outcome: .failed, detail: "missing on the box: \(missing.joined(separator: ", "))",
+                            hint: "Install them on the box, for example: apt-get install -y \(missing.joined(separator: " "))")
+            }
+            return Step(name: "prerequisites", outcome: .unchanged, detail: required.isEmpty ? "docker and rsync present" : "docker, rsync, \(required.joined(separator: ", ")) present", hint: nil)
         } catch {
             return Step(name: "prerequisites", outcome: .failed, detail: "\(error)", hint: "Check ssh to the box")
         }

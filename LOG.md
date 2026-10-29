@@ -218,3 +218,15 @@
 - Local runs record their average CPU and memory. Box runs are not measured yet.
 - Ad hoc signed, reproducible build; no Developer ID, so a browser download is blocked on first open (install.sh and the cask fetch it without the quarantine flag).
 - Pending: the second company (s1) scenario; `live` against a real box was not run for this release; the manual check of a failed job's log opened from its notification is not recorded.
+
+## 2026-10-29 - required programs per box
+
+- Why: remote `scripts/review-pr.test.sh` and part of `wt.test.sh` failed on `ai-gamerina-eu` with exit 127: the box has no zsh (`command -v zsh` empty), the tests call it. RMJ routed correctly; the box lacked a program nothing checked.
+- New destination key `requires` (rules.json, `docs/ROUTING.md`): the programs and shells a box must provide. Validated as plain names, no duplicates. Setup checks each with `command -v` in the same ssh call as docker and rsync and fails with `missing on the box: zsh` plus an install hint.
+- Acceptance tests (Codex): `RequiresManifestAcceptanceTests`.
+- Open: install zsh on `ai-gamerina-eu` (`vboxuser` has no passwordless sudo; the owner runs it). The probe and the destination card do not show missing programs yet; only setup checks them.
+
+## 2026-10-29 - release 0.1.1
+
+- Destinations take a `requires` list of programs and shells the box must provide; Setup checks each and fails with `missing on the box: zsh` and an install hint (docs/ROUTING.md). Builds before 0.1.1 reject a rules.json that has the key, so update first.
+- Pending as in 0.1.0: the second company (s1) scenario; `live` against a real box; the manual check of a failed job's log opened from its notification. The probe and the destination card do not show missing programs yet.
