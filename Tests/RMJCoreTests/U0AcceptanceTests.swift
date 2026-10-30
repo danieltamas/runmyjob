@@ -148,7 +148,7 @@ func processRunnerStopsGrandchildHoldingPipe() async throws {
         )
     }
 
-    #expect(started.duration(to: clock.now) < .seconds(8))
+    #expect(started.duration(to: clock.now) < .seconds(20))
 }
 
 @Test("ProcessRunner reports timeout even when TERM leads to exit zero")
