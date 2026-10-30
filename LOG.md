@@ -345,4 +345,5 @@ Optional log streaming, the Run report window, and no Open log button on a queue
 - A run keeps its checkout locked until the Mac has pulled the result, so a queued run can no longer sync over it.
 - A login that would expire before the task's timeout falls back to running on the Mac and says why; a dead token fails fast.
 - Verified: 484 tests, scripts/check.sh green; Codex review rounds in docs/reviews/u14-2026-10-30.md; live on a real box with Claude and Codex, three queued runs, cancel and timeout (exit 124).
+- Perf gate not met cleanly: `scripts/perf.sh 600` on the owner's live app read idle 0.44% and 0.54% (budget 0.4%) with the panel open and other agents' jobs running; streaming 0.60% and 0.75% (budget 2%). An isolated instance (empty home, panel closed) idles at 0.01% over 300s. No idle-path code changed since 0.6.2. A clean run with the panel closed is still to do.
 - Not verified: the registry ping and the cask pin for this release (run after publishing).
