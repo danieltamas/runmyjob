@@ -40,7 +40,8 @@ public struct PanelLoader: Sendable {
             if let modified { lastOutput[job.id] = modified }
         }
         let state = RulesStore(home: home).load()
-        let cards = state.rules.map { DestinationLoader().cards(rules: $0, tailnet: tailnet, jobs: jobs, probes: probes, runners: runners, registrations: registrations, now: now) } ?? []
+        let cards = state.rules.map { DestinationLoader().cards(rules: $0, tailnet: tailnet, jobs: jobs, probes: probes, runners: runners, registrations: registrations,
+                                                                     profiles: ProfileStore(home: home), now: now) } ?? []
         var snapshot = PanelSnapshot(now: now, tailnet: tailnet, jobs: jobs, destinations: cards, rulesState: state, lastOutput: lastOutput, unseenFailure: unseenFailure)
         snapshot.history = Array(history)
         snapshot.load = await LocalLoad.sample(jobs: jobs.filter { $0.state == .running && $0.github == nil && $0.location == "local" }.map(\.id), logs: archive.directory)

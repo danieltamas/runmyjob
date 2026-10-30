@@ -35,11 +35,13 @@ public struct DestinationCardInput: Sendable {
     public var latestRunner: (version: String, servedUntil: String?)?
     public var rxJobs: [JobRecord]
     public var images: [String]
+    /// Images on the box that RMJ has no reason to show: counted, not listed.
+    public var otherImages: Int
     public var pollInterval: TimeInterval
 
     public init(name: String, config: DestinationConfig, availability: Availability, probe: DestinationProbeResult? = nil,
                 runners: [Runner] = [], staleRegistrations: Int = 0, latestRunner: (version: String, servedUntil: String?)? = nil,
-                rxJobs: [JobRecord] = [], images: [String] = [], pollInterval: TimeInterval = 30) {
+                rxJobs: [JobRecord] = [], images: [String] = [], otherImages: Int = 0, pollInterval: TimeInterval = 30) {
         self.name = name
         self.config = config
         self.availability = availability
@@ -49,6 +51,7 @@ public struct DestinationCardInput: Sendable {
         self.latestRunner = latestRunner
         self.rxJobs = rxJobs
         self.images = images
+        self.otherImages = otherImages
         self.pollInterval = pollInterval
     }
 }
@@ -87,6 +90,7 @@ public struct DestinationCardPresentation: Sendable, Equatable {
     public let rxContainers: [String]
     public let runners: [RunnerLine]
     public let images: [Line]
+    public let otherImages: Int
     /// Programs the images used here lack, as the last probe found them.
     public let missingTools: [MissingTools]
     public let lastProbe: String
@@ -103,6 +107,7 @@ public struct DestinationCardPresentation: Sendable, Equatable {
         rxContainers = input.rxJobs.filter { $0.state == .running || $0.state == .syncing }.map(\.id)
         runners = input.runners.map { Self.runnerLine($0, latest: input.latestRunner) }
         images = input.images.map { Line(label: $0, value: "", tone: .plain, stale: nil) }
+        otherImages = input.otherImages
         missingTools = input.probe?.missingTools ?? []
         lastProbe = input.probe.map { "probed \(PanelFormat.age(now.timeIntervalSince($0.probedAt)))" } ?? "never probed"
         let reason = Self.offlineReason(input.availability)

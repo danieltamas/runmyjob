@@ -65,15 +65,40 @@ public struct DestinationLoader: Sendable {
     public init() {}
 
     public func cards(rules: Rules, tailnet: TailnetState, jobs: [JobRecord], probes: [String: DestinationProbeResult],
-                      runners: [String: [RunnerContainer]], registrations: [String: [GitHubRunner]] = [:], now: Date) -> [DestinationCardInput] {
+                      runners: [String: [RunnerContainer]], registrations: [String: [GitHubRunner]] = [:], profiles: ProfileStore? = nil,
+                      now: Date) -> [DestinationCardInput] {
         rules.destinations.keys.sorted().compactMap { name in
             guard let config = rules.destinations[name], config.enabled else { return nil }
             let availability = DestinationResolver.resolve(DestinationTarget(alias: config.sshAlias, peerID: config.peerID), in: tailnet)
             let live = jobs.filter { $0.destination == name && $0.github == nil && ($0.state == .running || $0.state == .syncing) }
+            let images = Self.relevantImages(probes[name]?.images.value ?? [], routed: rules.images(for: name) + Self.profileImages(rules, destination: name, profiles: profiles))
             return DestinationCardInput(name: name, config: config, availability: availability, probe: probes[name],
                                         runners: (runners[name] ?? []).map { Self.runner($0, registered: registrations[name]) }, rxJobs: live,
-                                        images: probes[name]?.images.value ?? [])
+                                        images: images.shown, otherImages: images.other)
         }
+    }
+
+    /// The images the profiles of rules routed to `destination` run (a rule with a profile has no `image` of its own).
+    static func profileImages(_ rules: Rules, destination: String, profiles: ProfileStore?) -> [String] {
+        guard let profiles else { return [] }
+        return rules.rules.filter { $0.to.contains(destination) }.compactMap(\.profile).compactMap(profiles.image)
+    }
+
+    /// What a box card lists of `docker image ls`: the shipped `rx-*` images, the images rules send here and the runner
+    /// stack's. A rule image with a tag matches that tag only; without one, any tag of the repository.
+    static func relevantImages(_ all: [String], routed: [String]) -> (shown: [String], other: Int) {
+        func split(_ image: String) -> (repository: String, tag: String?) {
+            guard let colon = image.lastIndex(of: ":"), !image[colon...].contains("/") else { return (image, nil) }
+            return (String(image[..<colon]), String(image[image.index(after: colon)...]))
+        }
+        let rules = routed.map(split)
+        let shown = all.filter { image in
+            let (repository, tag) = split(image)
+            if repository.hasPrefix("rx-") || repository == "gh-runner" || repository.hasPrefix("gh-runner-")
+                || repository == "ghcr.io/actions/actions-runner" { return true }
+            return rules.contains { $0.repository == repository && ($0.tag == nil || $0.tag == tag) }
+        }
+        return (shown, all.count - shown.count)
     }
 
     /// A container is registered when GitHub lists an online runner named `<container id>-<epoch>`. Without a registration

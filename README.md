@@ -51,7 +51,7 @@ out, an arrow appears in the panel header and the Update button in Settings, Abo
 - **Jobs from every source in one list.** A `cargo test` an agent started in a worktree, a `just check` from your
   terminal, the `test` job of a pull request on your self-hosted runner. Live elapsed time, the exact start and end
   read from the box itself, sync time apart, and who started it (Claude Code, Codex, OpenCode, Hermes).
-- **Your boxes at a glance.** Slots in use, memory budget, load, the runners online or busy, and the images built on
+- **Your boxes at a glance.** Slots in use, memory budget, load, the runners online or busy, and the images RMJ uses on
   each box, refreshed every five minutes.
 - **Failures keep their log.** A failed run's output is pulled the moment it fails and kept 30 days, with a rerun button.
 

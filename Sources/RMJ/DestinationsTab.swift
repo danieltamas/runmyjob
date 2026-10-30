@@ -89,7 +89,7 @@ struct DestinationCard: View {
             if !card.runners.isEmpty {
                 section("Runners") { ForEach(card.runners, id: \.name) { runner($0) } }
             }
-            if !card.images.isEmpty { section("Images (\(card.images.count))") { images } }
+            if !card.images.isEmpty || card.otherImages > 0 { section("Images (\(card.images.count))") { images } }
             footer
         }
     }
@@ -108,6 +108,9 @@ struct DestinationCard: View {
                         .font(.meta).foregroundStyle(Theme.warn).fixedSize(horizontal: false, vertical: true)
                 }
             }
+        }
+        if card.otherImages > 0 {
+            Text("plus \(card.otherImages) other image\(card.otherImages == 1 ? "" : "s") on this box").font(.meta).foregroundStyle(Theme.textTertiary)
         }
         if card.images.count > 4 {
             LinkButton(title: showAllImages ? "Show fewer" : "Show \(card.images.count - 4) more") { withAnimation(Motion.spring) { showAllImages.toggle() } }

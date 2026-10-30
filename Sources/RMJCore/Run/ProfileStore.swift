@@ -21,6 +21,11 @@ public struct ProfileStore: Sendable {
         file(name, suffix: ".json").flatMap { try? String(contentsOf: $0, encoding: .utf8) }
     }
 
+    /// The image a profile runs, for the box card's list of images in use.
+    func image(_ name: String) -> String? {
+        json(name).flatMap { try? JSONDecoder().decode(DockerPlan.Profile.self, from: Data($0.utf8)) }?.image
+    }
+
     /// The prelude a profile names, found beside it.
     func prelude(_ file: String) -> String? {
         self.file(file, suffix: "").flatMap { try? String(contentsOf: $0, encoding: .utf8) }
