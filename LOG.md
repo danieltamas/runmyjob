@@ -283,3 +283,10 @@ Optional log streaming, the Run report window, and no Open log button on a queue
 - Verified: scripts/check.sh green (433 tests) and RMJ's own GitHub CI green on the fix commit.
 - Not verified: a real box sync from a Mac without Homebrew rsync.
 
+## 2026-10-30 - release 0.6.2
+
+- The Images list on a box's card no longer shows everything Docker has (redis, postgres, nginx...). It lists the `rx-*` images, the images your rules send to that box (including a rule's profile image) and the runner stack's images, and ends with "plus N other images on this box".
+- Existing `runner-*` containers on a box are still recognized: RMJ's runner stack is the same compose stack, found by container name.
+- Verified: scripts/check.sh green (441 tests); Codex review in docs/reviews/box-images-list-2026-10-30.md.
+- Not verified: the card on a real box after the update (the next probe fills it).
+
