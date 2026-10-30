@@ -10,11 +10,13 @@ struct MissingProgramsAcceptanceTests {
     }
 
     @Test func onlyImagesWithGapsAreListedInImageOrder() async {
-        let (second, _) = await probe(["rx-rust", "rx-node"], section: "@@tools rc=0\nmissing:rx-node:bun\n")
+        let (second, _) = await probe(["rx-rust", "rx-node", "rx-python", "rx-go"], section: "@@tools rc=0\nmissing:rx-node:bun\n")
         #expect(second.missingTools == [MissingTools(image: "rx-node", programs: ["bun"])])
-        let (both, _) = await probe(["rx-node", "rx-rust"],
-            section: "@@tools rc=0\nmissing:rx-rust:zsh\nmissing:rx-node:bun\n")
-        #expect(both.missingTools == [MissingTools(image: "rx-node", programs: ["bun"]),
+        let (both, _) = await probe(["rx-go", "rx-node", "rx-python", "rx-rust"],
+            section: "@@tools rc=0\nmissing:rx-rust:zsh\nmissing:rx-python:pytest\nmissing:rx-node:bun\nmissing:rx-go:go\n")
+        #expect(both.missingTools == [MissingTools(image: "rx-go", programs: ["go"]),
+                                    MissingTools(image: "rx-node", programs: ["bun"]),
+                                    MissingTools(image: "rx-python", programs: ["pytest"]),
                                     MissingTools(image: "rx-rust", programs: ["zsh"])])
     }
 
@@ -42,15 +44,17 @@ struct MissingProgramsAcceptanceTests {
     }
 
     @Test func invalidNamesNeverEnterScriptAndContainersAreHardened() async throws {
-        let (_, spy) = await probe(["rx-rust", "rx-node", "x;y"], requires: ["jq", "z sh; rm"], section: "@@tools rc=0\n")
+        let (_, spy) = await probe(["rx-rust", "rx-node", "rx-python", "rx-go", "x;y"], requires: ["jq", "z sh; rm"], section: "@@tools rc=0\n")
         let script = try #require(await spy.scripts.first)
         #expect(!script.contains("x;y") && !script.contains("z sh; rm"))
         #expect(script.contains("jq"))
         for fragment in ["docker run --rm", "--network none", "--cap-drop ALL",
                          "--security-opt no-new-privileges", "--entrypoint sh", "docker image inspect"] {
-            #expect(script.components(separatedBy: fragment).count - 1 == 2)
+            #expect(script.components(separatedBy: fragment).count - 1 == 4)
         }
-        #expect(script.contains("rx-rust") && script.contains("rx-node"))
+        for image in ["rx-rust", "rx-node", "rx-python", "rx-go"] {
+            #expect(script.contains(image))
+        }
     }
 
     @Test func failedAbsentAndTruncatedToolsSectionsReportUnknown() async {

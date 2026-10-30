@@ -47,6 +47,10 @@ enum ScreenshotRender {
             let destinations = PanelModel(snapshot: DemoShots.snapshot(stress: stress))
             destinations.tab = .destinations
             try write(PanelView(model: destinations, height: 1100), to: url("destinations"))
+            let opened = PanelModel(snapshot: DemoShots.snapshot(stress: stress))
+            opened.tab = .destinations
+            opened.expanded = ["dest:ai-eu-1"]
+            try write(PanelView(model: opened, height: 1100), to: url("destinations-open"))
             let routing = PanelModel(snapshot: DemoShots.snapshot(stress: stress))
             routing.tab = .routing
             try write(PanelView(model: routing, height: 1500), to: url("routing"))
@@ -72,10 +76,35 @@ enum ScreenshotRender {
             var empty = DemoShots.snapshot(stress: stress)
             empty.jobs = []
             try write(PanelView(model: PanelModel(snapshot: empty)), to: url("jobs-empty"))
+            try writeComposites(stress: stress, url: url)
             for (name, state) in MenuBarIconState.samples {
                 try write(MenuBarLabel(state: state).padding(10).background(Color(white: 0.2)), to: url("menubar-\(name)"))
             }
         }
+    }
+
+    private static let compositeInset: CGFloat = 48
+    private static let compositeGap: CGFloat = 22
+
+    /// The README's wide shots: panels side by side over the backdrop, each surface rounded and shadowed.
+    private static func writeComposites(stress: Bool, url: (String) -> URL) throws {
+        func panel(_ tab: PanelTab, open: Set<String> = [], expanded: Set<String> = [], settled: Bool = false) -> some View {
+            var snapshot = DemoShots.snapshot(stress: stress)
+            if settled { snapshot.jobs.removeAll { $0.state == .running || $0.state == .syncing } }
+            let model = PanelModel(snapshot: snapshot)
+            model.tab = tab
+            model.openJobs = open
+            model.expanded = expanded
+            return PanelView(model: model, height: 780).clipShape(RoundedRectangle(cornerRadius: 22))
+                .shadow(color: .black.opacity(0.5), radius: 18, y: 8)
+        }
+        try write(composite { panel(.jobs); panel(.destinations, expanded: ["dest:ai-eu-1"]) }, to: url("hero"))
+        try write(composite { panel(.routing); panel(.jobs, open: ["gh-queued"], settled: true) }, to: url("routing-queue"))
+    }
+
+    private static func composite(@ViewBuilder _ content: () -> some View) -> some View {
+        HStack(alignment: .top, spacing: compositeGap, content: content)
+            .padding(.horizontal, compositeInset).padding(.vertical, compositeInset - 8).background(Backdrop())
     }
 
     /// An offscreen window, not `ImageRenderer`: that one leaves text fields and other AppKit-backed controls as placeholders.

@@ -5,68 +5,90 @@
 <h1 align="center">Run My Job (RMJ)</h1>
 
 <p align="center">
-  <b>Your builds and tests, on your boxes, watched from the menu bar.</b><br>
-  RMJ sends the builds, test suites and CI jobs your coding agents start to the Linux machines on your
-  <a href="https://tailscale.com">Tailscale</a> network,<br>and shows every run in one place: what is running, how long it took, what failed, and where the log is.
+  <b>Your builds run on your boxes. Your Mac stays quiet.</b><br>
+  RMJ sends the Rust, Node and other builds and test suites your coding agents start to the Linux machines on<br>
+  your <a href="https://tailscale.com">Tailscale</a> network, runs your self-hosted GitHub Actions runners there, and shows every job in one list.
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-14%2B-111?logo=apple&logoColor=white" alt="macOS 14+">
   <img src="https://img.shields.io/badge/transport-Tailscale%20only-3B82F6" alt="Tailscale only">
-  <img src="https://img.shields.io/badge/dependencies-none-444" alt="No third-party packages">
+  <img src="https://img.shields.io/badge/boxes-docker%20only-444" alt="Docker only on the box">
   <img src="https://img.shields.io/badge/license-MIT-22C55E" alt="MIT">
 </p>
 
-<p align="center">
-  <img src="docs/assets/demo.gif" width="560" alt="RMJ in the menu bar: jobs running on a box, a failed run with its log, routing rules">
-</p>
+<!-- The launch film (runmyjob.mp4): drag it into the GitHub editor and paste the user-attachments URL on its own
+     line here; that is the only way GitHub plays a video inline. -->
 
-<table>
-  <tr>
-    <td width="33%"><img src="docs/assets/jobs.png" alt="Jobs: running, queued and finished runs"><br><sub><b>Jobs.</b> Every run in one list, live.</sub></td>
-    <td width="33%"><img src="docs/assets/destinations.png" alt="Destinations: your boxes with runners and capacity"><br><sub><b>Destinations.</b> Your boxes, runners, capacity.</sub></td>
-    <td width="33%"><img src="docs/assets/routing.png" alt="Routing: rules, first match wins, tenant deny"><br><sub><b>Routing.</b> Rules you write, a boundary no rule crosses.</sub></td>
-  </tr>
-</table>
+> **Status:** early releases. The app is signed ad hoc, not notarized, so macOS asks you to confirm the first open.
+> Report anything wrong at [github.com/danieltamas/runmyjob/issues](https://github.com/danieltamas/runmyjob/issues).
 
-## How it works
+## Install
 
-```mermaid
-flowchart LR
-  A["Agent or terminal<br/>rmj run -- cargo test"] --> R{"RMJ rules<br/>first match wins"}
-  R -- "box is up, tenant matches" --> B["Your Linux box<br/>over Tailscale: rsync, docker"]
-  R -- "no rule, tailnet down, sync failed" --> L["This Mac<br/>the ledger says why"]
-  G["GitHub Actions<br/>self-hosted runner"] --> B
-  B --> J[("Jobs, timings, logs<br/>30 days")]
-  L --> J
-  J --> M["Menu bar panel, rmj CLI, MCP"]
+Open **Terminal** and paste this:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danieltamas/runmyjob/main/install.sh | bash
 ```
 
-> **Status.** The app, the `rmj` command, routing, the GitHub poller, box setup, agent hooks and a read-only MCP
-> server (`rmj mcp`) are built and tested. Releases are ad hoc signed, not notarized, and the first one is not out yet:
-> [docs/PLAN.md](docs/PLAN.md) lists what is done and what is next.
+Or, with Homebrew:
 
-## What you get
+```bash
+brew install --cask danieltamas/tap/rmj
+```
 
-- **One list of jobs**, wherever they run: a `cargo test` started in a worktree, a `just check` from
-  your terminal, the `check` job of a pull request on your self-hosted runner. Live elapsed time,
-  exact start and end from the box itself, sync time apart.
-- **Routing by rules you write.** Which repo goes to which box, with which image, what stays on your
-  Mac, and a company boundary no rule can cross. Add a rule from the panel: pick a toolchain (Node,
-  Rust, Swift, Python, Go or anything), pick the boxes, save. The rules live in one file the app edits
-  and the CLI reads, so a build routes right even when the app is closed.
-- **Boxes you do not manage by hand.** Add a Linux machine from your tailnet and RMJ sets it up:
-  build images, a GitHub Actions runner for every repo or organization you name, registration
-  checked against GitHub. Nothing is installed on the box beyond what runs in docker.
-- **Destinations you can see.** OS, memory and disk of every tailnet machine, refreshed every five
-  minutes; runners online, busy or unregistered; images; a stale registration gets a prune button.
-- **One list, 30 days, searchable.** Durations, waits and their reasons, local fallbacks, a failed run's log
-  pulled the moment it fails, a rerun button.
-- **Optional log streaming.** Send every run's output, as it happens, to Loki, Datadog or Elasticsearch,
-  several at once, each limited to the tenants you name. Off until you add a sink; a small glyph in the
-  panel header shows when it is on and turns amber when a sink is behind. See [Log streaming](#log-streaming).
-- **Local always works.** No box, no tailnet, a failed sync: the command runs on your Mac and the
-  ledger says why. A red test suite is never a reason to fall back.
+It needs macOS 14 or newer. RMJ appears in the menu bar a few seconds later, and the `rmj` command lands in `~/.local/bin`.
+The install line downloads the release, checks it against the published checksum and copies RMJ to `/Applications`
+(or `~/Applications` if you cannot write there); [read the script](install.sh) first if you like. When a new version is
+out, an arrow appears in the panel header and the Update button in Settings, About installs it.
+
+## Every run in one place
+
+<p align="center">
+  <img src="docs/assets/hero.png" alt="The Jobs panel with a Rust test running on a box, a GitHub Actions job on a runner and a queued job, next to the Destinations panel with one box open: capacity, runners, images" width="926">
+</p>
+
+- **Jobs from every source in one list.** A `cargo test` an agent started in a worktree, a `just check` from your
+  terminal, the `test` job of a pull request on your self-hosted runner. Live elapsed time, the exact start and end
+  read from the box itself, sync time apart, and who started it (Claude Code, Codex, OpenCode, Hermes).
+- **Your boxes at a glance.** Slots in use, memory budget, load, the runners online or busy, and the images built on
+  each box, refreshed every five minutes.
+- **Failures keep their log.** A failed run's output is pulled the moment it fails and kept 30 days, with a rerun button.
+
+## You decide where each build runs
+
+<p align="center">
+  <img src="docs/assets/routing-queue.png" alt="Routing rules, first match wins: cargo to the Rust image, npm and bun to the Node image, one repo to its own gate image, a company's repos to its own box; next to finished and queued jobs with the reason a job waits" width="926">
+</p>
+
+- **Rules you can read, first match wins.** Rust repos to the Rust image on one box, Node repos to the Node image,
+  `cargo build` for this Mac's own binary stays on the Mac, one company's repos to that company's box. Press "New
+  rule", pick the toolchain, the boxes and optionally the repos; "Test your rules" shows which rule catches a repo and
+  where its build would go, without running anything.
+- **A boundary no rule crosses.** Give each company a tenant: its repos never reach another tenant's box. Tested, not
+  just documented.
+- **Waiting says why.** A job queued on a busy box names the job it waits for; a GitHub job queued on your runners names
+  the cause, for example a stale registration, and offers the prune button.
+- **Local always works.** No box, no tailnet, a failed sync: the command runs on your Mac and the list says why. A
+  red test suite is never a reason to fall back.
+
+## Boxes you do not manage by hand
+
+Add a Linux machine from your tailnet and press Set up. RMJ makes the box ready and changes only what differs, so you can
+run it again any time.
+
+- **Every job runs in a Docker container; the box itself carries only Docker, rsync and ssh.** Nothing of RMJ is
+  installed on the host besides one script. RMJ ships and builds four toolchain images, `rx-rust` (cargo, just), `rx-node` (node, bun), `rx-python` (python, uv,
+  pytest) and `rx-go` (go), all with bash, zsh, git and jq, and rebuilds one when its Dockerfile in RMJ changes. A rule's
+  image is just a name, so any other Docker image (your own, or `ruby:3.3`) works the same way.
+- **Tools are checked inside the image,** not on the host. The box's card lists what is missing in which image, and
+  Set up tells you which Dockerfile to add it to.
+- **Containers are locked down by default:** no Linux capabilities, no privilege gain, a process limit, the box user's
+  own uid, and memory and CPU limits from the rule. A rule can switch it off with `"hardening": false`.
+- **Self-hosted GitHub Actions runners,** one per repo or organization you name: registered with a token kept in your
+  Keychain, checked against GitHub, listed with their version and whether they are idle or busy.
+- **What runs where:** Linux builds. Swift packages that import AppKit or SwiftUI build only on a Mac, so RMJ does not
+  route them.
 
 ## Tailscale
 
@@ -102,26 +124,14 @@ behind a public address, so RMJ has no public-IP mode and no fallback transport 
 
 The full threat model is in [SECURITY.md](SECURITY.md).
 
-## Install
-
-From a checkout (macOS 14 or newer, Xcode command line tools):
-
-```bash
-git clone https://github.com/danieltamas/runmyjob && cd runmyjob
-scripts/install-from-source.sh     # installs RMJ.app and the `rmj` command
-```
-
-The app is signed ad hoc, not notarized, so macOS asks you to confirm the first open. Release
-installs (`install.sh`) arrive with the first signed release.
-
 ## First run
 
 1. Open RMJ from the menu bar. The tab bar shows Jobs, Destinations and Routing.
 2. **Destinations:** Settings > Destinations, press "Add as destination" on a Linux box, name it,
    pick its company (tenant). RMJ asks for a GitHub token once per GitHub owner, stores it in your
-   Keychain and sets the box up. Run it again any time: it only changes what differs.
+   Keychain and sets the box up.
 3. **Routing:** press "New rule". Pick what (Rust, Node, ...), where (your boxes, then this Mac) and,
-   if you like, which repos. "Test your rules" shows which rule catches a repo and where its build would go.
+   if you like, which repos.
 4. **Run something:** in a checkout, `rmj route -- cargo test` says where it would run, and
    `rmj run -- cargo test` runs it there. The panel shows it live.
 

@@ -106,12 +106,18 @@ public enum DemoShots {
         done.startedAt = now.addingTimeInterval(-7_190); done.endedAt = now.addingTimeInterval(-6_815)
         done.boxStartedAt = done.startedAt; done.boxEndedAt = done.endedAt
 
+        var node = JobRecord(id: "rx-node", repo: "acme/storefront", command: "npm test", location: "ai-eu-1", destination: "ai-eu-1",
+                             warmth: "warm", state: .done, queuedAt: now.addingTimeInterval(-1_000))
+        node.tenant = "acme"; node.agent = "claude-code"; node.branch = "feat/cart"; node.commit = "7e6d5c4b"; node.exitCode = 0
+        node.startedAt = now.addingTimeInterval(-990); node.endedAt = now.addingTimeInterval(-912)
+        node.boxStartedAt = node.startedAt; node.boxEndedAt = node.endedAt
+
         var yesterday = done
         yesterday.id = "rx-yesterday"; yesterday.repo = "acme/nimbus"; yesterday.queuedAt = now.addingTimeInterval(-100_000)
         yesterday.startedAt = yesterday.queuedAt.addingTimeInterval(10); yesterday.endedAt = yesterday.queuedAt.addingTimeInterval(400)
         yesterday.boxStartedAt = yesterday.startedAt; yesterday.boxEndedAt = yesterday.endedAt; yesterday.warmth = "unknown"
 
-        return [running, syncing, github, waiting, queued, failed, localFailed, lost, done, yesterday]
+        return [running, syncing, github, waiting, queued, node, failed, localFailed, lost, done, yesterday]
     }
 
     static func info(repo: String, name: String, status: String, step: String?, number: Int?, done: Int, total: Int,
@@ -134,7 +140,7 @@ public enum DemoShots {
                        ContainerSample(name: "runner-atlas", cpu: "35%", memory: "2.4GiB / 32GiB"),
                        ContainerSample(name: "runner-orbit", cpu: "1%", memory: "0.4GiB / 32GiB")]
         let probe = DestinationProbeResult(availability: .online(address: "100.64.0.10"), docker: .ok("27.3", at: now), rsync: .ok("3.3", at: now),
-                                           images: .ok(["rx-rust", "gh-runner"], at: now), containers: .ok(samples, at: now.addingTimeInterval(-10)),
+                                           images: .ok(["rx-rust", "rx-node", "gh-runner"], at: now), containers: .ok(samples, at: now.addingTimeInterval(-10)),
                                            cores: 16, memoryFreeMB: 11_200, memoryTotalMB: 32_000, diskTotalMB: 480_000, diskFreeMB: 212_000, osName: "Ubuntu 24.04 LTS", load: 3.4, bootID: "boot", uptime: 86_400 * 9,
                                            clockOffsetMS: 12, probedAt: now.addingTimeInterval(-20))
         let name = stress ? "ai-eu-with-a-very-long-destination-name" : "ai-eu-1"
@@ -144,7 +150,7 @@ public enum DemoShots {
             runners: [.init(container: container("runner-atlas", "bf4597"), job: "gh-2002", readiness: "registered", busy: true, cpu: "35%", memory: "2.4 GB"),
                       .init(container: container("runner-orbit", "c01d12", version: "2.337.0"), cpu: "1%", memory: "0.4 GB")],
             staleRegistrations: 1, latestRunner: ("2.340.0", "2026-11-20"), rxJobs: jobs(stress: false).filter { $0.id == "rx-running" },
-            images: ["rx-rust:latest, 3 days", "gh-runner:2.338.2, 9 days"])
+            images: ["rx-rust:latest, 3 days", "rx-node:latest, 3 days", "gh-runner:2.338.2, 9 days"])
         var offlineProbe = probe
         offlineProbe = DestinationProbeResult(availability: .offline("peer offline"), docker: .ok("27.3", at: now), rsync: .ok("3.3", at: now),
                                               images: .ok(["rx-rust"], at: now), containers: .ok([], at: now), cores: 8, memoryFreeMB: 6_000, memoryTotalMB: 16_000, diskTotalMB: 240_000, diskFreeMB: 90_000, osName: "Ubuntu 22.04 LTS",
@@ -195,6 +201,9 @@ public enum DemoShots {
           "volumes": ["rx-cargo-registry:/usr/local/cargo/registry", "rx-cargo-git:/usr/local/cargo/git",
                       "rx-rustup:/usr/local/rustup", "rx-target-{repo}:/work/target"],
           "cold_marker": { "acme/atlas": "Compiling libduckdb-sys" } },
+        { "name": "node repos to the node image",
+          "match": { "tenant": ["acme", "personal"], "command": ["npm", "bun", "pnpm"], "has": "package.json" },
+          "to": ["ai-eu-1"], "image": "rx-node" },
         { "name": "ledger gate image with its dev pair",
           "match": { "repo": ["acme/ledger"] }, "to": ["ai-eu-1"], "profile": "ledger" },
         { "name": "Globex repos to s1",

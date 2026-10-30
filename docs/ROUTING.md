@@ -233,7 +233,7 @@ differs.
   presence and the current `boot_id`. Container gone, no `.rc`, boot changed: `lost: destination
   rebooted`, partial log pulled. `.rc` present: settle with box timing. Container present:
   still running, keep streaming from the log file.
-- Images are built on the box from `Support/box/images/<name>/Dockerfile` (`rx-rust`, `rx-node`). The build
+- Images are built on the box from `Support/box/images/<name>/Dockerfile` (`rx-rust`, `rx-node`, `rx-python`, `rx-go`). The build
   carries the label `rmj.dockerfile=<sha256 of the Dockerfile>`; Setup rebuilds an image whose label differs from
   the Dockerfile RMJ ships (or has none), so changing a Dockerfile in RMJ fixes every box on its next Setup. The box
   itself carries docker, rsync, ssh and bash only; every other tool a job needs is inside the image. Swift packages

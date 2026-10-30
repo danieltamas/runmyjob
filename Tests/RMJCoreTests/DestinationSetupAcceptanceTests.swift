@@ -156,19 +156,25 @@ struct DestinationSetupAcceptanceTests {
 
     @Test func imagesReuseBuildFailAndIgnoreUnmanagedImages() async throws {
         let files = try SetupFiles(); defer { files.remove() }
-        try files.write("images/node/Dockerfile", text: "FROM scratch\n")
+        for image in ["node", "python", "go"] {
+            try files.write("images/\(image)/Dockerfile", text: "FROM scratch\n")
+        }
         let shell = SetupShell(images: "rx-rust\tlatest\t2026-10-01\t1 day ago\n")
         let report = await (try setup(shell, roles: ["rx"], images: files.root.appendingPathComponent("images"),
-                                     needed: ["rx-rust", "rx-node", "rx-missing", "ubuntu", "gh-runner"])).run()
+                                     needed: ["rx-rust", "rx-node", "rx-python", "rx-go", "rx-missing", "ubuntu", "gh-runner"])).run()
         #expect(report.steps.first { $0.name == "rx-rust" }?.outcome == .unchanged)
         #expect(report.steps.first { $0.name == "rx-node" }?.outcome == .changed)
+        #expect(report.steps.first { $0.name == "rx-python" }?.outcome == .changed)
+        #expect(report.steps.first { $0.name == "rx-go" }?.outcome == .changed)
         #expect(report.steps.first { $0.name == "rx-missing" }?.outcome == .failed)
-        #expect(Set(report.steps.map(\.name)) == ["prerequisites", "rx-rust", "rx-node", "rx-missing",
-            "tools in rx-rust", "tools in rx-node"])
+        #expect(Set(report.steps.map(\.name)) == ["prerequisites", "rx-rust", "rx-node", "rx-python", "rx-go", "rx-missing",
+            "tools in rx-rust", "tools in rx-node", "tools in rx-python", "tools in rx-go"])
         let builds = await shell.scripts.filter { $0.hasPrefix("docker build") }
         let hash = SHA256.hash(data: Data("FROM scratch\n".utf8)).map { String(format: "%02x", $0) }.joined()
-        #expect(builds == ["docker build --label rmj.dockerfile=\(hash) -t rx-node -"])
-        #expect(await shell.inputs == [Data("FROM scratch\n".utf8)])
+        #expect(builds == ["rx-go", "rx-node", "rx-python"].map {
+            "docker build --label rmj.dockerfile=\(hash) -t \($0) -"
+        })
+        #expect(await shell.inputs == Array(repeating: Data("FROM scratch\n".utf8), count: 3))
         #expect(!report.isReady && report.changed)
     }
 

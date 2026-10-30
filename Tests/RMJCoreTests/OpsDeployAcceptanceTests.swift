@@ -235,13 +235,13 @@ struct OpsDeployAcceptanceTests {
     @Test func imagesFilterRepositoriesAndBuildOnlyValidatedNamesViaStdin() async throws {
         let shell = FakeShell { script, _ in
             if script.contains("docker images") {
-                return u6Output("rx-rust\tlatest\t2026-10-25\t2 days ago\ngh-runner\t2.338.2\t2026-10-26\t1 day ago\nubuntu\tlatest\ttoday\t1 hour ago\nrx-node\tdev\ttoday\t1 hour ago\ngh-runner-other\tx\ttoday\tnow\n")
+                return u6Output("rx-rust\tlatest\t2026-10-25\t2 days ago\ngh-runner\t2.338.2\t2026-10-26\t1 day ago\nubuntu\tlatest\ttoday\t1 hour ago\nrx-node\tdev\ttoday\t1 hour ago\nrx-python\tlatest\ttoday\tnow\nrx-go\tlatest\ttoday\tnow\ngh-runner-other\tx\ttoday\tnow\n")
             }
             return u6Output()
         }
         let images = try await RunnerImages.list(shell: shell)
-        #expect(images.map(\.repository) == ["rx-rust", "gh-runner", "rx-node"])
-        #expect(images.map(\.tag) == ["latest", "2.338.2", "dev"])
+        #expect(images.map(\.repository) == ["rx-rust", "gh-runner", "rx-node", "rx-python", "rx-go"])
+        #expect(images.map(\.tag) == ["latest", "2.338.2", "dev", "latest", "latest"])
         #expect(images[0].created == "2026-10-25" && images[0].age == "2 days ago")
         let dockerfile = Data("FROM fixture\n".utf8)
         try await RunnerImages.build(name: "rust", dockerfile: dockerfile, shell: shell)
