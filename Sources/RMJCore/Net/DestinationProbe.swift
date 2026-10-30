@@ -51,6 +51,8 @@ public struct DestinationProbeResult: Sendable, Equatable {
     public let uptime: TimeInterval?
     public let clockOffsetMS: Int?
     public let probedAt: Date
+    /// The box's own counters and sensors; nil when the probe read none of them.
+    public var sensors: SensorSnapshot?
     /// What the images used here lack, per image; nil when there was nothing to look for or the box did not report.
     public var missingTools: [MissingTools]?
 
@@ -127,6 +129,13 @@ public struct DestinationProbe: Sendable {
         ("load", "cut -d' ' -f1 /proc/loadavg"),
         ("boot", "cat /proc/sys/kernel/random/boot_id"),
         ("uptime", "cut -d' ' -f1 /proc/uptime"),
+        ("virt", "systemd-detect-virt"),
+        ("cpustat", "head -n1 /proc/stat"),
+        ("swap", "awk '/^SwapTotal:/ {t=$2} /^SwapFree:/ {f=$2} END {print int(t/1024), int((t-f)/1024)}' /proc/meminfo"),
+        ("net", "awk 'NR>2 {sub(/^ +/, \"\"); split($0, f, /[: ]+/); if (f[1] !~ /^(lo|veth|docker|br-|virbr)/) {rx+=f[2]; tx+=f[10]}} END {printf \"%.0f %.0f\\n\", rx, tx}' /proc/net/dev"),
+        ("psi", "for r in cpu memory; do [ -r /proc/pressure/$r ] && awk -v r=$r '$1==\"some\" {split($2,a,\"=\"); print r, a[2]}' /proc/pressure/$r; done; true"),
+        ("hwmon", "for f in /sys/class/hwmon/hwmon*/temp*_input /sys/class/thermal/thermal_zone*/temp; do [ -r \"$f\" ] && echo \"temp $(cat \"$f\" 2>/dev/null)\"; done; "
+            + "for f in /sys/class/hwmon/hwmon*/fan*_input; do [ -r \"$f\" ] && echo \"fan $(cat \"$f\" 2>/dev/null)\"; done; true"),
         ("clockend", "date +%s%N"),
     ]
 
@@ -217,6 +226,7 @@ public struct DestinationProbe: Sendable {
             osName: reading("osname").value.map { String($0.prefix(60)) },
             load: number("load"), bootID: reading("boot").value, uptime: number("uptime"), clockOffsetMS: clock, probedAt: now)
         result.missingTools = missing
+        result.sensors = SensorSnapshot.read(sections)
         return result
     }
 

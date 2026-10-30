@@ -100,6 +100,13 @@ One card per destination, accent in the tenant colour. Header: name, tenant chip
 `runners`), state chip (`online`, `relayed`, `offline: peer offline since 14:43`, `unreachable:
 ssh timeout`, `rejected: not a tailnet address`, `rebooted 10 min ago`, `tailnet down`). Body, in
 order:
+- Sensors: a row of tiny icon-and-value chips under the summary (CPU busy, memory used, load, disk
+  used, download, upload; swap only when in use; temperature and fan only where the box exposes
+  them). Open, each is a tile with its name and a sparkline of the last 30 minutes, followed by swap
+  and CPU and memory pressure. A fan icon turns while a fan reports rpm. A VM, WSL or container
+  box shows no temperature or fan chip at all, never an empty one. Tones: CPU, memory and disk warn
+  from 85 percent and go critical from 95; load warns at one per core and goes critical at two;
+  temperature warns from 80 C and goes critical from 90.
 - Capacity: rx slots `1 of 3`, memory budget `14 of 36 GB` (rx limits plus runner caps), CPU
   count, 1-minute load, free memory. A job type the box cannot take right now says why
   (`over budget`, `no rx-node image`).

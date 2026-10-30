@@ -24,7 +24,7 @@ public struct PanelLoader: Sendable {
     public func settleOrphans() async { await Reconciler.settleLocal(ledger: ledger, archive: archive) }
 
     public func snapshot(tailnet: TailnetState, now: Date = Date(), unseenFailure: Bool = false,
-                         probes: [String: DestinationProbeResult] = [:], runners: [String: [RunnerContainer]] = [:],
+                         probes: [String: DestinationProbeResult] = [:], histories: [String: [DestinationProbeResult]] = [:], runners: [String: [RunnerContainer]] = [:],
                          registrations: [String: [GitHubRunner]] = [:]) async throws -> PanelSnapshot {
         let cutoff = now.addingTimeInterval(-Self.window)
         let all = try await ledger.jobs()
@@ -40,7 +40,7 @@ public struct PanelLoader: Sendable {
             if let modified { lastOutput[job.id] = modified }
         }
         let state = RulesStore(home: home).load()
-        let cards = state.rules.map { DestinationLoader().cards(rules: $0, tailnet: tailnet, jobs: jobs, probes: probes, runners: runners, registrations: registrations,
+        let cards = state.rules.map { DestinationLoader().cards(rules: $0, tailnet: tailnet, jobs: jobs, probes: probes, histories: histories, runners: runners, registrations: registrations,
                                                                      profiles: ProfileStore(home: home), now: now) } ?? []
         var snapshot = PanelSnapshot(now: now, tailnet: tailnet, jobs: jobs, destinations: cards, rulesState: state, lastOutput: lastOutput, unseenFailure: unseenFailure)
         snapshot.history = Array(history)

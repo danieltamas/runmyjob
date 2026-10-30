@@ -82,6 +82,14 @@ CLI's writes within a second. When the app is not running, `rmj run` still recor
 | GitHub runners | 60 s | 10 min |
 | Local log tail (one running rx job) | streaming | none |
 
+Box sensors ride on the same probe (U15): `virt`, `cpustat`, `swap`, `net`, `psi` and `hwmon` steps read
+kernel files only (`systemd-detect-virt`, `/proc`, `/sys`; nothing installed, no sudo) into one
+`SensorSnapshot`, with every number validated and a bad step never discarding another. Counters are raw
+totals: the Mac keeps the last 60 probes per box and `SensorRates` turns two of them into CPU busy percent
+and network rates (a counter that went backwards, a reboot, voids the interval). The system kind (bare
+metal, VM, WSL, container) decides nothing by itself: a temperature or fan chip exists only when the box
+produced a reading, which WSL and most VMs never do.
+
 Idle CPU under 0.3 percent; every poller is an actor with a timeout; a slow box never blocks the
 UI; a failing poller yields a `Reading.failed(reason)` that the panel shows as unknown, never
 green.

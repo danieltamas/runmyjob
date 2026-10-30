@@ -64,7 +64,7 @@ public struct DestinationOps: Sendable {
 public struct DestinationLoader: Sendable {
     public init() {}
 
-    public func cards(rules: Rules, tailnet: TailnetState, jobs: [JobRecord], probes: [String: DestinationProbeResult],
+    public func cards(rules: Rules, tailnet: TailnetState, jobs: [JobRecord], probes: [String: DestinationProbeResult], histories: [String: [DestinationProbeResult]] = [:],
                       runners: [String: [RunnerContainer]], registrations: [String: [GitHubRunner]] = [:], profiles: ProfileStore? = nil,
                       now: Date) -> [DestinationCardInput] {
         rules.destinations.keys.sorted().compactMap { name in
@@ -74,7 +74,7 @@ public struct DestinationLoader: Sendable {
             let images = Self.relevantImages(probes[name]?.images.value ?? [], routed: rules.images(for: name) + Self.profileImages(rules, destination: name, profiles: profiles))
             return DestinationCardInput(name: name, config: config, availability: availability, probe: probes[name],
                                         runners: (runners[name] ?? []).map { Self.runner($0, registered: registrations[name]) }, rxJobs: live,
-                                        images: images.shown, otherImages: images.other)
+                                        images: images.shown, otherImages: images.other, history: histories[name] ?? [])
         }
     }
 

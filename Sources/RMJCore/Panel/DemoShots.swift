@@ -139,10 +139,28 @@ public enum DemoShots {
         let samples = [ContainerSample(name: "rx-8841", cpu: "212%", memory: "6.1GiB / 12GiB"),
                        ContainerSample(name: "runner-atlas", cpu: "35%", memory: "2.4GiB / 32GiB"),
                        ContainerSample(name: "runner-orbit", cpu: "1%", memory: "0.4GiB / 32GiB")]
-        let probe = DestinationProbeResult(availability: .online(address: "100.64.0.10"), docker: .ok("27.3", at: now), rsync: .ok("3.3", at: now),
+        func demoProbe(at time: Date, load: Double = 3.4, free: Int = 11_200) -> DestinationProbeResult { DestinationProbeResult(availability: .online(address: "100.64.0.10"), docker: .ok("27.3", at: now), rsync: .ok("3.3", at: now),
                                            images: .ok(["rx-rust", "rx-node", "gh-runner"], at: now), containers: .ok(samples, at: now.addingTimeInterval(-10)),
-                                           cores: 16, memoryFreeMB: 11_200, memoryTotalMB: 32_000, diskTotalMB: 480_000, diskFreeMB: 212_000, osName: "Ubuntu 24.04 LTS", load: 3.4, bootID: "boot", uptime: 86_400 * 9,
-                                           clockOffsetMS: 12, probedAt: now.addingTimeInterval(-20))
+                                           cores: 16, memoryFreeMB: free, memoryTotalMB: 32_000, diskTotalMB: 480_000, diskFreeMB: 212_000, osName: "Ubuntu 24.04 LTS", load: load, bootID: "boot", uptime: 86_400 * 9,
+                                           clockOffsetMS: 12, probedAt: time) }
+        // Eight probes 30 s apart with a busy CPU and some traffic, so the sensor chips and sparklines have something to draw.
+        let busyShare: [Int64] = [38, 52, 61, 70, 66, 74, 81, 77]
+        let loads: [Double] = [2.1, 2.8, 3.0, 3.6, 3.2, 3.9, 4.4, 3.4]
+        let freeMB: [Int] = [14_000, 13_200, 12_600, 12_900, 12_000, 11_600, 11_000, 11_200]
+        let received: [Int64] = [0, 12, 40, 52, 91, 99, 150, 171]
+        let sent: [Int64] = [0, 2, 5, 6, 11, 12, 17, 19]
+        let intervalTicks: Int64 = 3_000 * 16
+        var busyTicks: Int64 = 0
+        var history: [DestinationProbeResult] = []
+        for index in 0..<8 {
+            if index > 0 { busyTicks += intervalTicks * busyShare[index] / 100 }
+            var sample = demoProbe(at: now.addingTimeInterval(Double(index - 7) * 30 - 20), load: loads[index], free: freeMB[index])
+            sample.sensors = SensorSnapshot(kind: .vm, cpuBusyTicks: busyTicks, cpuTotalTicks: Int64(index) * intervalTicks,
+                                            swapTotalMB: 2_048, swapUsedMB: 0, netRxBytes: received[index] * 1_000_000, netTxBytes: sent[index] * 1_000_000,
+                                            cpuPressure: 1.3, memoryPressure: 0.2)
+            history.append(sample)
+        }
+        let probe = history[7]
         let name = stress ? "ai-eu-with-a-very-long-destination-name" : "ai-eu-1"
         let online = DestinationCardInput(
             name: name, config: config("acme", roles: ["rx", "runners"], maxJobs: 3, budget: "36g", targets: ["acme/atlas", "org:Acme"]),
@@ -150,7 +168,7 @@ public enum DemoShots {
             runners: [.init(container: container("runner-atlas", "bf4597"), job: "gh-2002", readiness: "registered", busy: true, cpu: "35%", memory: "2.4 GB"),
                       .init(container: container("runner-orbit", "c01d12", version: "2.337.0"), cpu: "1%", memory: "0.4 GB")],
             staleRegistrations: 1, latestRunner: ("2.340.0", "2026-11-20"), rxJobs: jobs(stress: false).filter { $0.id == "rx-running" },
-            images: ["rx-rust:latest, 3 days", "rx-node:latest, 3 days", "gh-runner:2.338.2, 9 days"])
+            images: ["rx-rust:latest, 3 days", "rx-node:latest, 3 days", "gh-runner:2.338.2, 9 days"], history: history)
         var offlineProbe = probe
         offlineProbe = DestinationProbeResult(availability: .offline("peer offline"), docker: .ok("27.3", at: now), rsync: .ok("3.3", at: now),
                                               images: .ok(["rx-rust"], at: now), containers: .ok([], at: now), cores: 8, memoryFreeMB: 6_000, memoryTotalMB: 16_000, diskTotalMB: 240_000, diskFreeMB: 90_000, osName: "Ubuntu 22.04 LTS",

@@ -32,7 +32,7 @@ final class PanelModel: ObservableObject {
     /// One line shown in the footer for a few seconds: what an action did or why it did not.
     @Published var notice: String?
     /// Set by the panel view: a failure counts as seen only while the Jobs tab is actually on screen.
-    var panelVisible = false
+    @Published var panelVisible = false
     private var githubPolledAt: Date?
     private var boxesPolledAt: Date?
     private var probing = false
@@ -45,6 +45,8 @@ final class PanelModel: ObservableObject {
     private var tailnet = TailnetMonitor()
     /// The last good reading from each box, kept so a card can say how old it is.
     private var probes: [String: DestinationProbeResult] = [:]
+    /// The last probes per box, for the sensor rates and sparklines.
+    private var histories: [String: [DestinationProbeResult]] = [:]
     /// The rule open in the Routing tab: an index, -1 for a new one. The floating button and the tab share it.
     @Published var editingRule: Int?
     /// The header glyph for log streaming, and what its tooltip says; both come from the sinks' status file.
@@ -148,7 +150,7 @@ final class PanelModel: ObservableObject {
         Task { [weak self] in
             guard let self, let loader = try? PanelLoader() else { return }
             let state = await tailnet.current(maxAge: 10)
-            guard let fresh = try? await loader.snapshot(tailnet: state, probes: probes, runners: runners, registrations: registrations) else { return }
+            guard let fresh = try? await loader.snapshot(tailnet: state, probes: probes, histories: histories, runners: runners, registrations: registrations) else { return }
             update(fresh)
         }
     }
@@ -166,7 +168,7 @@ final class PanelModel: ObservableObject {
                 }
                 let state = await monitor.current(maxAge: (self?.snapshot.runningCount ?? 0) > 0 ? 10 : 30)
                 self?.probeBoxesInBackground(loader: loader, tailnet: state)
-                if let snapshot = try? await loader.snapshot(tailnet: state, probes: self?.probes ?? [:], runners: self?.runners ?? [:], registrations: self?.registrations ?? [:]) {
+                if let snapshot = try? await loader.snapshot(tailnet: state, probes: self?.probes ?? [:], histories: self?.histories ?? [:], runners: self?.runners ?? [:], registrations: self?.registrations ?? [:]) {
                     self?.update(snapshot)
                 }
                 if let background = self?.background {
@@ -214,7 +216,10 @@ final class PanelModel: ObservableObject {
         for (name, config) in rules.destinations where config.enabled {
             let target = DestinationTarget(alias: config.sshAlias, peerID: config.peerID, requires: config.requires ?? [], images: rules.images(for: name))
             guard case .online(let address) = DestinationResolver.resolve(target, in: state) else { continue }
-            probes[name] = await DestinationProbe().probe(target, tailnet: state)
+            let result = await DestinationProbe().probe(target, tailnet: state)
+            probes[name] = result
+            // A probe that never reached the box has no counters to compare.
+            if result.availability.isAvailable { histories[name] = Array(((histories[name] ?? []) + [result]).suffix(SensorChips.historyLimit)) }
             if config.roles.contains("runners"), let list = try? await RunnerContainer.list(shell: SSHOpsShell(address: address, alias: config.sshAlias)) {
                 runners[name] = list
                 // GitHub's own view of whether those containers are registered and online; a failed read leaves the container as is.

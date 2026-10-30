@@ -32,6 +32,13 @@ struct DestinationCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 header
                 summary.padding(.top, 7)
+                // The small chips give way to the tiles: they fold away as the card opens and come back as it closes.
+                if !card.sensors.isEmpty {
+                    Collapsible(open: !open, lazy: false) {
+                        SensorRow(chips: card.sensors, visible: model.panelVisible && !open).padding(.top, 5)
+                            .opacity(open ? 0 : 1).animation(Motion.snappy, value: open)
+                    }
+                }
                 Collapsible(open: open, lazy: false) { details.padding(.top, 7) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -58,7 +65,6 @@ struct DestinationCard: View {
         HStack(spacing: 12) {
             if let slots = value("rx slots") { stat("rx", slots.value, tone: slots.tone) }
             if let memory = value("memory budget") { stat("mem", memory.value.replacingOccurrences(of: " of ", with: "/"), tone: memory.tone) }
-            if let load = value("load") { stat("load", load.value, tone: load.tone) }
             if !card.missingTools.isEmpty { stat("missing", card.missingTools.flatMap(\.programs).joined(separator: ", "), tone: .warn) }
             if !card.runners.isEmpty {
                 let healthy = card.runners.filter { $0.tone == .ok }.count
@@ -80,8 +86,11 @@ struct DestinationCard: View {
     private var details: some View {
         VStack(alignment: .leading, spacing: 9) {
             Rectangle().fill(Theme.hairline).frame(height: 0.5)
+            if !card.sensors.isEmpty {
+                section(card.systemKind.map { "Sensors, \($0)" } ?? "Sensors") { sensorTiles.opacity(open ? 1 : 0).animation(Motion.gentle.delay(open ? 0.08 : 0), value: open) }
+            }
             if !card.capacity.isEmpty {
-                section("Capacity") { ForEach(card.capacity, id: \.label) { line($0) } }
+                section("Capacity") { ForEach(card.capacity.filter { !["load", "free memory"].contains($0.label) || card.sensors.isEmpty }, id: \.label) { line($0) } }
             }
             if !card.rxContainers.isEmpty {
                 section("rx jobs") { ForEach(card.rxContainers, id: \.self) { Text($0).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.textSecondary) } }
@@ -91,6 +100,21 @@ struct DestinationCard: View {
             }
             if !card.images.isEmpty || card.otherImages > 0 { section("Images (\(card.images.count))") { images } }
             footer
+        }
+    }
+
+    /// Pressure only matters when the box is stalling, so it says nothing while it is low.
+    private var stalling: String? {
+        let high = card.sensorDetails.filter { $0.label.hasSuffix("pressure") && (Double($0.value.dropLast()) ?? 0) >= 5 }
+        return high.isEmpty ? nil : "stalling: " + high.map { "\($0.label) \($0.value)" }.joined(separator: ", ")
+    }
+
+    private var sensorTiles: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
+                ForEach(card.sensors, id: \.id) { SensorTile(chip: $0, visible: model.panelVisible) }
+            }
+            if let pressure = stalling { Text(pressure).font(.meta).foregroundStyle(Theme.warn) }
         }
     }
 

@@ -38,10 +38,13 @@ public struct DestinationCardInput: Sendable {
     /// Images on the box that RMJ has no reason to show: counted, not listed.
     public var otherImages: Int
     public var pollInterval: TimeInterval
+    /// The last probes, oldest first, for the sensor rates and sparklines; `probe` stays the newest.
+    public var history: [DestinationProbeResult]
 
     public init(name: String, config: DestinationConfig, availability: Availability, probe: DestinationProbeResult? = nil,
                 runners: [Runner] = [], staleRegistrations: Int = 0, latestRunner: (version: String, servedUntil: String?)? = nil,
-                rxJobs: [JobRecord] = [], images: [String] = [], otherImages: Int = 0, pollInterval: TimeInterval = 30) {
+                rxJobs: [JobRecord] = [], images: [String] = [], otherImages: Int = 0, pollInterval: TimeInterval = 30,
+                history: [DestinationProbeResult] = []) {
         self.name = name
         self.config = config
         self.availability = availability
@@ -53,6 +56,7 @@ public struct DestinationCardInput: Sendable {
         self.images = images
         self.otherImages = otherImages
         self.pollInterval = pollInterval
+        self.history = history
     }
 }
 
@@ -87,6 +91,10 @@ public struct DestinationCardPresentation: Sendable, Equatable {
     public let roles: [String]
     public let state: JobRowPresentation.Chip
     public let capacity: [Line]
+    public let sensors: [SensorChip]
+    public let sensorDetails: [Line]
+    /// "bare metal", "VM", "WSL" or "container"; nil when the box did not say.
+    public let systemKind: String?
     public let rxContainers: [String]
     public let runners: [RunnerLine]
     public let images: [Line]
@@ -104,6 +112,10 @@ public struct DestinationCardPresentation: Sendable, Equatable {
         let online = input.availability.isAvailable
         let stale = Self.staleMarker(input, now: now)
         capacity = online || input.probe != nil ? Self.capacity(input, stale: stale) : []
+        let shown = online || input.probe != nil
+        sensors = shown ? SensorChips.chips(input, stale: stale) : []
+        sensorDetails = shown ? SensorChips.details(input.probe) : []
+        systemKind = shown ? input.probe?.sensors.flatMap { SensorChips.kindLabel($0.kind) } : nil
         rxContainers = input.rxJobs.filter { $0.state == .running || $0.state == .syncing }.map(\.id)
         runners = input.runners.map { Self.runnerLine($0, latest: input.latestRunner) }
         images = input.images.map { Line(label: $0, value: "", tone: .plain, stale: nil) }

@@ -347,3 +347,10 @@ Optional log streaming, the Run report window, and no Open log button on a queue
 - Verified: 484 tests, scripts/check.sh green; Codex review rounds in docs/reviews/u14-2026-10-30.md; live on a real box with Claude and Codex, three queued runs, cancel and timeout (exit 124).
 - Perf gate not met cleanly: `scripts/perf.sh 600` on the owner's live app read idle 0.44% and 0.54% (budget 0.4%) with the panel open and other agents' jobs running; streaming 0.60% and 0.75% (budget 2%). An isolated instance (empty home, panel closed) idles at 0.01% over 300s. No idle-path code changed since 0.6.2. A clean run with the panel closed is still to do.
 - Not verified: the registry ping and the cask pin for this release (run after publishing).
+
+## 2026-10-31 - U15 box sensors
+
+- Destinations cards show the box's own sensors from the existing probe: CPU busy, memory used, load, disk used, download and upload as tiny icon chips, uptime, swap when in use, and temperature and fans where the kernel exposes them. Open, each is a tile with a sparkline of the last probes, plus the system kind (bare metal, VM, WSL, container) and CPU and memory pressure.
+- Nothing is installed on the box: six more read-only steps in the one ssh call (`systemd-detect-virt`, `/proc`, `/sys`). `ai-gamerina-eu` is WSL2 and exposes no temperature or fan files, so it shows the software chips only (checked live: `wsl`, counters, PSI; hwmon empty).
+- Rates (CPU busy, network) are computed on the Mac from two probes; a reboot voids the interval.
+- Codex acceptance tests: 19 (Tests/RMJCoreTests/BoxSensorsAcceptanceTests.swift).
