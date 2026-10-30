@@ -309,5 +309,7 @@ Optional log streaming, the Run report window, and no Open log button on a queue
   0.38 CPU-s on the Mac, branch with exactly the two-line change, checkout unchanged, no `rmj-*` directory left in /dev/shm,
   no `sk-ant` string in the box logs or in `~/.rmj`. Found live: `--to` skipped the rule and so the image ("no container for
   this rule"); fixed.
-- Still open: Codex agent runs, a run past a real token expiry, an egress allowlist, agent slots, and a kill deadline after the
-  TERM timeout (the argv is fixed by the acceptance tests).
+- Follow-up, same day: kill deadline after TERM, a size cap on the returned tree, a check that no other run took the checkout
+  before the pull, and a root commit for an unborn HEAD. Re-run live, 468 tests green.
+- Still open: the box's own log keeps a token the agent prints, a run past a real token expiry, Codex agent runs, an egress
+  allowlist, agent slots.

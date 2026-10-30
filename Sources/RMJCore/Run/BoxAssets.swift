@@ -169,8 +169,12 @@ case "${1:-}" in
     printf '%s\n' "$dir"; exit 0 ;;
   unsecret)
     shift; valid_ulid "$1"; rm -rf "$(secret_dir "$1")"; exit 0 ;;
+  holder)
+    # Who holds (or last held) a job lock: the Mac checks that nobody took the checkout before it pulled the result.
+    shift; [[ ${1:-} =~ ^/[A-Za-z0-9._/-]+\.lock$ && $1 != *..* ]] || exit 2
+    head -n1 "$1.holder" 2>/dev/null; exit 0 ;;
   prune) prune ;;
-  *) echo "usage: rx-run.sh begin|go|tail|log|cancel|job|stats|secret|unsecret|prune" >&2; exit 2 ;;
+  *) echo "usage: rx-run.sh begin|go|tail|log|cancel|job|stats|secret|unsecret|holder|prune" >&2; exit 2 ;;
 esac
 """#
 }

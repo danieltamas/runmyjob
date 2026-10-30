@@ -3,6 +3,59 @@ import Testing
 @testable import RMJCore
 
 struct AgentRunHardeningAcceptanceTests {
+    @Test func transferredBytesParsesGroupedSizeAndRequiresTransferredLine() {
+        #expect(TreeSync.transferredBytes(in: "Number of files: 22\nTotal transferred file size: 1,234,567 bytes\n") == 1234567)
+        #expect(TreeSync.transferredBytes(in: "Total file size: 1,234,567 bytes\n") == nil)
+        #expect(TreeSync.transferredBytes(in: "") == nil)
+    }
+
+    @Test func unbornSnapshotRemainsRootAfterFirstCommitWhileDefaultParentsOnHead() async throws {
+        let home = try await RunFixture.make(); defer { home.remove() }
+        let repo = home.root.appendingPathComponent("unborn-repo")
+        try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+        let f = AgentGitFixture(home: home, repo: repo)
+        _ = try await f.git(["init"])
+        #expect(try await AgentBranch.head(worktree: repo) == nil)
+        try f.write(repo, "tracked.txt", "before first commit\n")
+        let base = try await AgentBranch.snapshot(worktree: repo)
+        let result = try await f.materialize(base)
+        try f.write(result, "tracked.txt", "agent edit\n")
+        _ = try await f.git(["add", "--all"])
+        try await commitFixture(f, message: "first commit after snapshot")
+        let head = try await f.git(["rev-parse", "HEAD"])
+        let root = try createdCommit(await AgentBranch.record(worktree: repo, base: base, result: result,
+            jobID: "hardening-unborn-root", message: "root result", unborn: true))
+        let implicit = try createdCommit(await AgentBranch.record(worktree: repo, base: base, result: result,
+            jobID: "hardening-unborn-default", message: "default parent"))
+        #expect(try await f.git(["rev-list", "--parents", "-n", "1", root]) == root)
+        #expect(try await f.git(["rev-list", "--parents", "-n", "1", implicit]) == implicit + " " + head)
+        #expect(try await f.git(["rev-parse", "HEAD"]) == head)
+    }
+
+    @Test func pullRejectsAggregateEligibleSizeBeforeCopyingLocalSource() async throws {
+        let f = try await AgentGitFixture.make(); defer { f.home.remove() }
+        let source = f.home.root.appendingPathComponent("oversized-source")
+        let local = f.home.root.appendingPathComponent("pull-result")
+        for directory in [source, local] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        // Sparse files cost metadata only; rsync's dry run measures their logical sizes.
+        let size = 24 * 1024 * 1024
+        let count = AgentBranch.totalLimit / size + 1
+        #expect(size <= AgentBranch.fileLimit && count * size > AgentBranch.totalLimit)
+        for index in 0..<count {
+            let file = source.appendingPathComponent("eligible-\(index).bin")
+            #expect(FileManager.default.createFile(atPath: file.path, contents: Data()))
+            let handle = try FileHandle(forWritingTo: file)
+            defer { try? handle.close() }
+            try handle.truncate(atOffset: UInt64(size))
+        }
+        await #expect(throws: AgentBranch.Failure.tooLarge) {
+            try await TreeSync.pull(source: source.path + "/", into: local, worktree: f.repo, shell: nil)
+        }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: local.path).isEmpty)
+    }
+
     @Test func repositoryAndResultAttributesNeverExecuteCleanFilters() async throws {
         let f = try await AgentGitFixture.make(); defer { f.home.remove() }
         let marker = f.home.root.appendingPathComponent("filter-ran")

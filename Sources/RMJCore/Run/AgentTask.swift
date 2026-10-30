@@ -22,7 +22,7 @@ public struct AgentTask: Sendable, Equatable {
     public func argv(onBox: Bool) -> [String] {
         let tools = allowedTools.isEmpty ? [] : ["--allowedTools"] + allowedTools
         guard onBox else { return ["claude", "-p", prompt] + tools }
-        return ["timeout", "--signal=TERM", String(timeoutSeconds), "claude", "-p", prompt,
+        return ["timeout", "--signal=TERM", "--kill-after=30", String(timeoutSeconds), "claude", "-p", prompt,
                 "--permission-mode", unattended ? "bypassPermissions" : "acceptEdits"] + tools
     }
 }

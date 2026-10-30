@@ -45,7 +45,7 @@ public enum AgentBranch {
     }
 
     /// Imports `result` (a mirror of the box's directory) as a commit on `rmj/agent/<jobID>`, parented on `parent` (default HEAD).
-    public static func record(worktree: URL, base: String, result: URL, jobID: String, message: String, parent: String? = nil,
+    public static func record(worktree: URL, base: String, result: URL, jobID: String, message: String, parent: String? = nil, unborn: Bool = false,
                               runner: ProcessRunner = ProcessRunner()) async throws -> Outcome {
         guard jobID.range(of: "^[0-9A-Za-z][0-9A-Za-z_-]{0,63}$", options: .regularExpression) != nil else { throw Failure.invalidJobID }
         try removeUnimportable(in: result)
@@ -57,7 +57,7 @@ public enum AgentBranch {
         let tree = try await scratch.writeTree(workTree: result)
         if tree == base { return .unchanged }
         var parent = parent
-        if parent == nil { parent = try await git.head() }
+        if parent == nil, !unborn { parent = try await git.head() }
         if let parent { try await keepWhatTheSyncLeftOut(scratch: scratch, parent: parent, worktree: worktree) }
         let finalTree = try await scratch.writeTree(workTree: result)
         var commitArguments = ["commit-tree", finalTree, "-m", UntrustedText.clean(message, limit: 200)]

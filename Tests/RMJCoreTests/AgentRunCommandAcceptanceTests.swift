@@ -35,7 +35,7 @@ struct AgentRunCommandAcceptanceTests {
         for unattended in [false, true] {
             let task = AgentTask(prompt: "literal prompt", unattended: unattended,
                                  allowedTools: ["Read", "Edit"], timeoutSeconds: 90, requireBox: false)
-            #expect(task.argv(onBox: true) == ["timeout", "--signal=TERM", "90", "claude", "-p",
+            #expect(task.argv(onBox: true) == ["timeout", "--signal=TERM", "--kill-after=30", "90", "claude", "-p",
                 "literal prompt", "--permission-mode", unattended ? "bypassPermissions" : "acceptEdits",
                 "--allowedTools", "Read", "Edit"])
             #expect(task.argv(onBox: false) == ["claude", "-p", "literal prompt", "--allowedTools", "Read", "Edit"])

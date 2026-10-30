@@ -106,7 +106,16 @@ public struct SSHBoxClient: BoxClient {
     }
 
     public func pullTree(_ job: BoxJob, into local: URL) async throws {
+        // The box releases the checkout's lock when the container ends; a run queued behind it syncs over the directory.
+        // The result is only good if this job still held the lock before and after the pull.
+        func holds() async throws -> Bool {
+            guard let lock = job.locks.first else { return true }
+            let result = try await box(["holder", lock])
+            return result.status == 0 && String(decoding: result.stdout, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) == job.ulid
+        }
+        guard try await holds() else { throw BoxFailure("another run took the checkout before the result was pulled") }
         try await TreeSync.pull(source: "\(alias):\(job.directory)/", into: local, worktree: URL(fileURLWithPath: job.worktree), shell: try SSH.rsyncShell(address: address, alias: alias))
+        guard try await holds() else { throw BoxFailure("another run took the checkout while the result was pulled") }
     }
 
     public func cancel(ulid: String) async throws {

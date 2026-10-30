@@ -82,10 +82,22 @@ public enum TreeSync {
         arguments += fixedExcludes.flatMap { ["--exclude", $0] }
         if let shell { arguments += ["-e", shell] }
         arguments += [source, local.path + "/"]
+        // What would come back is measured first, so an oversized result never fills this Mac's disk.
+        let measured = try await runner.run(rsync, ["-n", "--stats"] + arguments, timeout: .seconds(600))
+        if measured.status == 0, let bytes = transferredBytes(in: String(decoding: measured.stdout, as: UTF8.self)), bytes > AgentBranch.totalLimit {
+            throw AgentBranch.Failure.tooLarge
+        }
         let output = try await runner.run(rsync, arguments, timeout: .seconds(1800))
         guard output.status == 0 else {
             throw Failure.rsyncFailed(output.status, UntrustedText.clean(output.stderr.split(separator: "\n").first.map(String.init) ?? "", limit: 200))
         }
+    }
+
+    /// The "Total transferred file size: 1,234 bytes" line of `rsync --stats`.
+    static func transferredBytes(in stats: String) -> Int? {
+        guard let line = stats.split(separator: "\n").first(where: { $0.hasPrefix("Total transferred file size:") }) else { return nil }
+        let digits = line.dropFirst("Total transferred file size:".count).filter(\.isNumber)
+        return Int(digits)
     }
 
     /// Anchored, glob characters escaped, so a file named `[x]*` excludes only itself.

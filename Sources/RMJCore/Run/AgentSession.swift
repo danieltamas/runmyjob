@@ -70,7 +70,7 @@ struct AgentSession: Sendable {
             try await client.pullTree(job, into: scratch)
             let title = task.prompt.split(separator: "\n").first.map(String.init) ?? "agent run"
             switch try await AgentBranch.record(worktree: URL(fileURLWithPath: worktree), base: base, result: scratch, jobID: job.ulid,
-                                                message: "rmj agent run \(job.ulid): \(title)", parent: head) {
+                                                message: "rmj agent run \(job.ulid): \(title)", parent: head, unborn: head == nil) {
             case .unchanged: return ("the agent changed nothing", true)
             case .created(let branch, let commit): return ("agent result on branch \(branch) (\(commit.prefix(8)))", true)
             }
