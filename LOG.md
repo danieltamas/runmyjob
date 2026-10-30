@@ -267,3 +267,11 @@ Optional log streaming, the Run report window, and no Open log button on a queue
 - Verified on ai-gamerina-eu: Setup rebuilt rx-rust through the fingerprint (`rebuilt: its Dockerfile changed`) and `tools in rx-rust: bash, zsh, git, jq, cargo, just present`; `rmj run -- cargo check` on the axon repo compiled in the hardened container (uid 1000 writes `target/`). rx-node built and checked locally in docker.
 - Not verified: rx-node on a real box (s1 untouched); a box whose ssh user is not uid 1000; the box CPU/memory reading on a job longer than 10 s.
 - Not on a box: Swift packages that import AppKit, SwiftUI, `os`, CryptoKit or SystemConfiguration (Bton, MacMax, RMJ) need the macOS SDK and stay on the Mac.
+
+## 2026-10-30 - release 0.6.0
+
+- RMJ now ships four toolchain images: `rx-rust`, `rx-node`, `rx-python` (python 3.12, uv, pytest) and `rx-go` (go 1.23), each with bash, zsh, git and jq. Setup builds them on a box and checks their tools like the other two. A rule can still name any other Docker image.
+- The images run as the box user's own uid: HOME and the Go and uv caches sit in /tmp so a box user other than uid 1000 can build.
+- Verified: both new images built locally; `go test` and `pytest` pass inside them as uid 4321; scripts/check.sh green (433 tests); Codex review in docs/reviews/images-python-go-2026-10-30.md.
+- Not verified: Setup building rx-python and rx-go on a real box (ai-eu-1, s1).
+- README rebuilt around where builds run and the self-hosted runners, with new screenshots from the app itself.
