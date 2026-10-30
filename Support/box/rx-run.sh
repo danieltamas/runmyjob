@@ -14,6 +14,8 @@
 #   job    <ulid>                                  print "container <present|absent> <boot_id>" and the records that exist
 #   secret <ulid> <name>                           write stdin to <name> in a private tmpfs directory for the job; prints the directory
 #   unsecret <ulid>                                remove that directory
+#   holder <lockfile>                              who holds (or last held) a job lock
+#   egress <image> <hosts>                         start the agent network and its filtering proxy (HTTPS to <hosts> only)
 #   prune                                          drop records older than 30 days
 set -u
 logs=$HOME/rx/.logs
@@ -33,7 +35,21 @@ waiter() {
   local fd=20 lock
   echo $$ > "$logs/$ulid.pid"
   for lock in "$@"; do
-    mkdir -p "$(dirname "$lock")"
+    mkdir -p "$(dirname "${lock#slots:*:}")"
+    if [[ $lock =~ ^slots:([0-9]{1,2}):(/[A-Za-z0-9._/-]+)$ ]]; then
+      # N interchangeable locks: the first free one is taken, otherwise wait for any.
+      local n=${BASH_REMATCH[1]} prefix=${BASH_REMATCH[2]} s taken=0
+      while [ $taken = 0 ]; do
+        for ((s = 0; s < n; s++)); do
+          eval "exec $fd>\"\$prefix.\$s.lock\"" 2>/dev/null || { printf 'start-failed slot\n' > "$logs/$ulid.launch"; printf '125 start-failed\n' > "$logs/$ulid.rc"; exit 1; }
+          if flock -n $fd; then taken=1; break; fi
+        done
+        [ $taken = 1 ] || { printf 'an agent slot\n' > "$logs/$ulid.wait"; sleep 1; }
+      done
+      rm -f "$logs/$ulid.wait"
+      fd=$((fd + 1))
+      continue
+    fi
     lock_failed() { printf 'start-failed lock %s\n' "$lock" > "$logs/$ulid.launch"; printf '125 start-failed\n' > "$logs/$ulid.rc"; exit 1; }
     eval "exec $fd>\"\$lock\"" 2>/dev/null || lock_failed
     if ! flock -n $fd; then
@@ -65,7 +81,11 @@ waiter() {
     [ "${args[i]}" = --entrypoint ] && break
     if [ "${args[i]}" = --user ] && [ "${args[i+1]:-}" = @box ]; then args[i+1]="$(id -u):$(id -g)"; break; fi
   done
-  if ! out=$(docker run -d --name "$name" --label rx --label "rmj.job=$ulid" "${args[@]}" 2>&1); then
+  # An agent run (it staged a login) never lets docker keep the output: the json log would hold an echoed token on the
+  # box's disk. The container is created without a log driver and attached, so only the redacted copy below exists.
+  local agent=0 start=(docker run -d) drv=()
+  if [ -e "$logs/$ulid.hold" ]; then agent=1; start=(docker create); drv=(--log-driver none); fi
+  if ! out=$("${start[@]}" --name "$name" --label rx --label "rmj.job=$ulid" "${drv[@]}" "${args[@]}" 2>&1); then
     printf 'start-failed %s\n' "$(printf '%s' "$out" | tr '\n' ' ' | cut -c1-300)" > "$logs/$ulid.launch"
     printf '125 start-failed\n' > "$logs/$ulid.rc"
     exit 0
@@ -73,15 +93,32 @@ waiter() {
   printf 'started %s %s\n' "$out" "$boot_id" > "$logs/$ulid.launch"
   # A cancel that arrived while docker was still creating the container found nothing to remove.
   [ -e "$logs/$ulid.abort" ] && docker rm -f "$name" > /dev/null 2>&1
-  docker logs -f "$name" > "$logs/$ulid.log" 2>&1 &
+  # Whatever an agent prints, a login token never lands in the record.
+  local redact=(sed -u -E 's/sk-ant-[A-Za-z0-9_-]{16,}/[redacted]/g; s/eyJ[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]*/[redacted]/g')
+  if [ $agent = 1 ]; then docker start -a "$name" 2>&1 | "${redact[@]}" > "$logs/$ulid.log" &
+  else docker logs -f "$name" 2>&1 | "${redact[@]}" > "$logs/$ulid.log" &
+  fi
   local follower=$!
-  local rc; rc=$(docker wait "$name" 2>/dev/null) || rc=1
-  wait $follower 2>/dev/null
+  local rc
+  if [ $agent = 1 ]; then
+    wait $follower 2>/dev/null
+    # A container that never started (attach failed) is still "created": that is a failed start, not a hang.
+    if [ "$(docker inspect -f '{{.State.Status}}' "$name" 2>/dev/null)" = created ]; then rc=125; else rc=$(docker wait "$name" 2>/dev/null) || rc=1; fi
+  else
+    rc=$(docker wait "$name" 2>/dev/null) || rc=1
+    wait $follower 2>/dev/null
+  fi
   docker inspect --format 'started={{.State.StartedAt}} finished={{.State.FinishedAt}} exit={{.State.ExitCode}}' "$name" \
     > "$logs/$ulid.meta" 2>/dev/null || printf 'started=? finished=? exit=%s\n' "$rc" > "$logs/$ulid.meta"
   docker rm -f "$name" > /dev/null 2>&1
   if [ -e "$logs/$ulid.cancelled" ]; then printf '%s cancelled\n' "$rc" > "$logs/$ulid.rc"; else printf '%s\n' "$rc" > "$logs/$ulid.rc"; fi
   rm -f "$logs/$ulid.go" "$logs/$ulid.spec" "$logs/$ulid.locked"
+  # An agent's result is still in the checkout: the locks stay until the Mac has pulled it (or ten minutes pass),
+  # so a run queued behind it cannot sync over the files first.
+  # A detached child inherits the lock descriptors, so the waiter itself can end (the Mac's tail waits for that).
+  if [ -e "$logs/$ulid.hold" ]; then
+    setsid -f bash -c 'for _ in $(seq 1 1200); do [ -e "$1" ] && break; sleep 0.5; done' _ "$logs/$ulid.release" > /dev/null 2>&1 < /dev/null
+  fi
   prune
 }
 
@@ -89,7 +126,7 @@ waiter() {
 secret_dir() { printf '%s/rmj-%s' "${XDG_RUNTIME_DIR:-/dev/shm}" "$1"; }
 
 prune() {
-  for ext in argv launch log rc meta wait cancelled abort pid; do find "$logs" -name "*.$ext" -mtime +30 -delete 2>/dev/null; done
+  for ext in argv launch log rc meta wait cancelled abort pid hold release; do find "$logs" -name "*.$ext" -mtime +30 -delete 2>/dev/null; done
   find /dev/shm "${XDG_RUNTIME_DIR:-/dev/shm}" -maxdepth 1 -name 'rmj-*' -mtime +1 -exec rm -rf {} + 2>/dev/null
 }
 
@@ -163,13 +200,60 @@ case "${1:-}" in
     # Memory-backed, and a directory this call created: never one that was there already or a link to somewhere else.
     case $(stat -f -c %T "$(dirname "$dir")" 2>/dev/null) in tmpfs|ramfs) ;; *) echo "rx-run: the secret directory is not on tmpfs" >&2; exit 1 ;; esac
     ( umask 077; mkdir "$dir" && [ -O "$dir" ] && [ ! -L "$dir" ] && set -C && cat > "$dir/$name" ) || { rm -rf "$dir"; exit 1; }
+    # A run that never starts (the Mac vanished between staging and go) leaves nothing for long.
+    setsid -f bash -c 'sleep 600; rm -rf -- "$1"' _ "$dir" > /dev/null 2>&1 < /dev/null
+    : > "$logs/$ulid.hold"
     printf '%s\n' "$dir"; exit 0 ;;
   unsecret)
-    shift; valid_ulid "$1"; rm -rf "$(secret_dir "$1")"; exit 0 ;;
+    shift; valid_ulid "$1"; rm -rf "$(secret_dir "$1")"; [ -e "$logs/$1.hold" ] && : > "$logs/$1.release"; exit 0 ;;
   holder)
     # Who holds (or last held) a job lock: the Mac checks that nobody took the checkout before it pulled the result.
     shift; [[ ${1:-} =~ ^/[A-Za-z0-9._/-]+\.lock$ && $1 != *..* ]] || exit 2
     head -n1 "$1.holder" 2>/dev/null; exit 0 ;;
+  egress)
+    shift; image=${1:-}; hosts=${2:-}
+    [[ $image =~ ^[a-z0-9._-]+$ && $hosts =~ ^[A-Za-z0-9.,-]+$ ]] || { echo "rx-run: bad egress arguments" >&2; exit 2; }
+    dir=$HOME/rx/.egress; mkdir -p "$dir"
+    exec 9> "$dir/lock"; flock 9
+    # One proxy serves every harness: it allows the union of the hosts any run has asked for.
+    hosts=$(printf '%s\n' "${hosts//,/$'\n'}" "$(cat "$dir/hosts" 2>/dev/null)" | tr 'A-Z' 'a-z' | grep -v '^$' | sort -u | paste -sd, -)
+    printf '%s\n' "$hosts" | tr ',' '\n' > "$dir/hosts"
+    # A network with no route out, and one proxy that tunnels HTTPS to the allowed hosts only (the proxy also sits on the bridge).
+    docker network inspect rmj-agents > /dev/null 2>&1 || docker network create --internal rmj-agents > /dev/null || exit 1
+    # A network that exists but routes out would hand an agent the open internet: refuse it.
+    [ "$(docker network inspect -f '{{.Internal}}' rmj-agents 2>/dev/null)" = true ] || { echo "rx-run: network rmj-agents is not internal" >&2; exit 1; }
+    cat > "$dir/proxy.js" <<'JS'
+const net = require('net'), http = require('http');
+const fs = require('fs');
+// Read per connection: widening the allowlist for another harness never restarts the proxy under a running tunnel.
+const allowed = () => new Set(fs.readFileSync('/hosts', 'utf8').split('\n').filter(Boolean));
+const server = http.createServer((req, res) => { res.writeHead(403); res.end('only HTTPS to allowed hosts\n'); });
+server.on('connect', (req, client, head) => {
+  const m = /^([A-Za-z0-9.-]+):(\d+)$/.exec(req.url || '');
+  if (!m || m[2] !== '443' || !allowed().has(m[1].toLowerCase())) { client.end('HTTP/1.1 403 Forbidden\r\n\r\n'); return; }
+  const up = net.connect(443, m[1], () => {
+    client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+    if (head && head.length) up.write(head);
+    up.pipe(client); client.pipe(up);
+  });
+  const stop = () => { up.destroy(); client.destroy(); };
+  up.on('error', stop); client.on('error', stop);
+  up.setTimeout(900000, stop);
+});
+server.listen(3128, '0.0.0.0');
+JS
+    want=$(sha256sum "$dir/proxy.js" | cut -c1-16)
+    have=$(docker inspect -f '{{index .Config.Labels "rmj.egress"}}' rmj-egress 2>/dev/null || true)
+    if [ "$have" != "$want" ] || [ -z "$(docker ps -q --filter name='^rmj-egress$')" ]; then
+      docker rm -f rmj-egress > /dev/null 2>&1
+      docker run -d --name rmj-egress --label rx --label "rmj.egress=$want" --restart unless-stopped --memory 128m --cpus 0.5 \
+        --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --read-only --user "$(id -u):$(id -g)" \
+        -v "$dir/proxy.js:/proxy.js:ro" -v "$dir/hosts:/hosts:ro" --entrypoint node "$image" /proxy.js > /dev/null || exit 1
+    fi
+    # Idempotent, and checked every time: a proxy that is up but not on the agent network serves nobody.
+    docker network connect rmj-agents rmj-egress > /dev/null 2>&1
+    docker inspect -f '{{json .NetworkSettings.Networks}}' rmj-egress | grep -q '"rmj-agents"' || exit 1
+    exit 0 ;;
   prune) prune ;;
   *) echo "usage: rx-run.sh begin|go|tail|log|cancel|job|stats|secret|unsecret|holder|prune" >&2; exit 2 ;;
 esac

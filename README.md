@@ -165,7 +165,7 @@ Keychain. Details: [docs/LOG-STREAMING.md](docs/LOG-STREAMING.md).
 | `rmj run -- cargo test` | route, run and track it; the exit code is the command's |
 | `rmj jobs`, `rmj job <id>`, `rmj log <id>` | the ledger: state, timings, the archived log |
 | `rmj failures`, `rmj destinations`, `rmj runners` | what failed, what the boxes are doing (`--json` for scripts) |
-| `rmj agent run -- "<prompt>"` | run Claude Code on a box with the Mac's login; the result comes back as a branch `rmj/agent/<id>` |
+| `rmj agent run -- "<prompt>"` | run Claude Code (or `--harness codex`) on a box with the Mac's login; the result comes back as a branch `rmj/agent/<id>` |
 | `rmj rerun <id>`, `rmj cancel <id>` | run it again, stop it |
 | `rmj destination setup <name>` | bring a box to ready (idempotent) |
 | `rmj hooks install\|status\|remove` | agent hooks and shims |

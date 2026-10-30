@@ -28,6 +28,15 @@ actor AgentBoxFake: BoxClient {
     var staged: [(String, String, Data)] = []
     var goJobs: [BoxJob] = []
     var pulled: [BoxJob] = []
+    var egress: [(String, [String])] = []
+    var egressFails = false
+    var echoed = Data()
+    func failEgress() { egressFails = true }
+    func echo(_ data: Data) { echoed = data }
+    func ensureEgress(image: String, hosts: [String]) async throws {
+        mark("ensureEgress"); egress.append((image, hosts))
+        if egressFails { throw BoxFailure("egress unavailable") }
+    }
     func mark(_ name: String) { calls.append(name) }
     func configure(code: Int = 0, startFailure: Bool = false, pending: Bool = false) async {
         await wrapped.configure(failure: pending ? "tail" : nil,
@@ -44,6 +53,7 @@ actor AgentBoxFake: BoxClient {
         mark("go"); goJobs.append(job); return try await wrapped.go(job)
     }
     func tail(_ job: BoxJob, output: @escaping @Sendable (Data) -> Void) async throws {
+        output(echoed)
         try await wrapped.tail(job, output: output)
     }
     func record(ulid: String) async throws -> BoxRecord { try await wrapped.record(ulid: ulid) }
@@ -81,6 +91,7 @@ private struct AgentRunTransport: RemoteTransport {
         @@images rc=0
         rx-rust:latest
         rx-claude:latest
+        rx-codex:latest
         @@containers rc=0
         @@nproc rc=0
         24
@@ -104,15 +115,16 @@ struct AgentEngineFixture {
     let box: AgentBoxFake
     let engine: RunEngine
     let local: URL
-    static func make(noRule: Bool = false, stopped: Bool = false, lifetime: TimeInterval = 7200) async throws -> Self {
+    static func make(noRule: Bool = false, stopped: Bool = false, lifetime: TimeInterval = 7200, harness: AgentHarness = .claude, slots: Int? = nil) async throws -> Self {
         let git = try await AgentGitFixture.make()
         let f = git.home
         let box = AgentBoxFake()
         var rules = Rules.shipped
         rules.destinations["ai-eu-1"]?.peerID = "n-ai-acme-1"
+        rules.destinations["ai-eu-1"]?.agentSlots = slots
         rules.rules = noRule ? [] : [try JSONDecoder().decode(Rule.self, from: Data("""
-        {"name":"agent acceptance","match":{"command":["claude"]},"to":["ai-eu-1"],
-         "image":"rx-claude","cpus":2,"memory":"4g"}
+        {"name":"agent acceptance","match":{"command":["\(harness.program)"]},"to":["ai-eu-1"],
+         "image":"\(harness.image)","cpus":2,"memory":"4g"}
         """.utf8))]
         let path = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Fixtures/tailnet/" + (stopped ? "stopped" : "running") + ".json").path
@@ -128,17 +140,17 @@ struct AgentEngineFixture {
             boxes: BoxDirectory(rules: state, tailnet: tailnet, factory: AgentBoxFactory(box: box)), probes: probes,
             output: f.output.add, notice: f.notices.notice,
             profiles: ProfileStore(home: RMJHome(environment: ["RMJ_HOME": f.root.path])),
-            now: { runNow }, credentials: AgentCredentialsFake(raw: try agentCredentialJSON(lifetime: lifetime), trace: box))
+            now: { runNow }, credentials: AgentCredentialsFake(raw: try (harness == .codex ? codexCredentialJSON(lifetime: lifetime) : agentCredentialJSON(lifetime: lifetime)), trace: box))
         let local = f.root.appendingPathComponent("local-ran")
-        let stub = f.root.appendingPathComponent("claude")
+        let stub = f.root.appendingPathComponent(harness.program)
         try Data(("#!/bin/sh\nprintf '%s\\n' \"$@\" > '" + local.path + "'\n").utf8).write(to: stub)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: stub.path)
         return Self(git: git, box: box, engine: engine, local: local)
     }
-    func request(requireBox: Bool = false, repo: String = "acme/axon") -> RunRequest {
-        let task = AgentTask(prompt: "change the code", unattended: true, allowedTools: ["Read", "Edit"],
+    func request(requireBox: Bool = false, repo: String = "acme/axon", harness: AgentHarness = .claude) -> RunRequest {
+        let task = AgentTask(harness: harness, prompt: "change the code", unattended: true, allowedTools: harness == .claude ? ["Read", "Edit"] : [],
                              timeoutSeconds: 90, requireBox: requireBox)
-        return RunRequest(command: [git.home.root.appendingPathComponent("claude").path] + task.argv(onBox: false).dropFirst(), identity: RepoIdentity(slug: repo, worktree: git.repo.path, dirty: true),
+        return RunRequest(command: [git.home.root.appendingPathComponent(harness.program).path] + task.argv(onBox: false).dropFirst(), identity: RepoIdentity(slug: repo, worktree: git.repo.path, dirty: true),
                           agentTask: task)
     }
 }

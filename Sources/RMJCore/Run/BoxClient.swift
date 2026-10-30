@@ -187,9 +187,12 @@ public protocol BoxClient: Sendable {
     func discardSecret(ulid: String) async
     /// Mirrors the job's directory on the box into `local`, leaving out what an agent run must not bring back.
     func pullTree(_ job: BoxJob, into local: URL) async throws
+    /// Makes sure the box's filtering proxy for agent runs is up and allows exactly `hosts`; throws when it cannot.
+    func ensureEgress(image: String, hosts: [String]) async throws
 }
 
 public extension BoxClient {
+    func ensureEgress(image: String, hosts: [String]) async throws {}
     func load(ulid: String) async -> JobLoad? { nil }
     func stageSecret(ulid: String, name: String, content: Data) async throws -> String { throw BoxFailure("this destination cannot stage credentials") }
     func discardSecret(ulid: String) async {}

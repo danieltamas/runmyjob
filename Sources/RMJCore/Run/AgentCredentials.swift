@@ -18,6 +18,17 @@ public struct KeychainCredentials: CredentialSource {
     }
 }
 
+/// Codex keeps its login in a file; the box gets a copy without the refresh token.
+public struct CodexAuthFile: CredentialSource {
+    public init() {}
+
+    public func load() async throws -> Data {
+        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/auth.json")
+        guard let data = try? Data(contentsOf: url), !data.isEmpty else { throw AgentCredentials.Failure.unreadable }
+        return data
+    }
+}
+
 public enum AgentCredentials {
     public enum Failure: Error, LocalizedError, Equatable {
         case unreadable
@@ -43,5 +54,41 @@ public enum AgentCredentials {
         login["refreshTokenExpiresAt"] = nil
         root = ["claudeAiOauth": login]
         return try JSONSerialization.data(withJSONObject: root, options: [.sortedKeys])
+    }
+
+    /// The staged login for `harness`, and the strings in it that must never show in output.
+    static func stage(raw: Data, harness: AgentHarness, now: Date, minimumLifetime: TimeInterval) throws -> (login: Data, expires: Date, secrets: [String]) {
+        switch harness {
+        case .claude:
+            let login = try stage(raw: raw, now: now, minimumLifetime: minimumLifetime)
+            let oauth = (try JSONSerialization.jsonObject(with: login) as? [String: Any])?["claudeAiOauth"] as? [String: Any]
+            let expires = Date(timeIntervalSince1970: ((oauth?["expiresAt"] as? NSNumber)?.doubleValue ?? 0) / 1000)
+            return (login, expires, [oauth?["accessToken"] as? String].compactMap { $0 })
+        case .codex:
+            guard var root = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any],
+                  var tokens = root["tokens"] as? [String: Any],
+                  let access = tokens["access_token"] as? String, !access.isEmpty,
+                  let expires = jwtExpiry(access) else { throw Failure.unreadable }
+            guard expires.timeIntervalSince(now) >= minimumLifetime else { throw Failure.expiresSoon }
+            let secrets = ["access_token", "id_token"].compactMap { tokens[$0] as? String }.filter { !$0.isEmpty }
+            // Codex does not read a login without the field; an empty value parses and cannot refresh anything.
+            tokens["refresh_token"] = ""
+            root["tokens"] = tokens
+            // A long-lived API key in the same file is not the short-lived login this run is allowed to carry.
+            if root["OPENAI_API_KEY"] != nil { root["OPENAI_API_KEY"] = NSNull() }
+            return (try JSONSerialization.data(withJSONObject: root, options: [.sortedKeys]), expires, secrets)
+        }
+    }
+
+    /// The `exp` claim of a JWT, without verifying it: only used to decide whether the copy would outlive the task.
+    static func jwtExpiry(_ token: String) -> Date? {
+        let parts = token.split(separator: ".")
+        guard parts.count == 3 else { return nil }
+        var payload = parts[1].replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        payload += String(repeating: "=", count: (4 - payload.count % 4) % 4)
+        guard let data = Data(base64Encoded: payload),
+              let claims = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let exp = (claims["exp"] as? NSNumber)?.doubleValue else { return nil }
+        return Date(timeIntervalSince1970: exp)
     }
 }

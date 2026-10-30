@@ -5,6 +5,7 @@ public enum AgentRunCommand {
     public enum Failure: Error, Equatable { case usage }
 
     public struct Options: Equatable, Sendable {
+        public var harness = AgentHarness.claude
         public var destination: String?
         public var timeoutSeconds = 3600
         public var unattended = false
@@ -13,15 +14,19 @@ public enum AgentRunCommand {
         public var prompt = ""
     }
 
-    static let usage = "usage: rmj agent run [--to destination] [--timeout 30m] [--unattended] [--allow \"Tool,Tool\"] [--require-box] -- \"<prompt>\""
+    static let usage = "usage: rmj agent run [--harness claude|codex] [--to destination] [--timeout 30m] [--unattended] [--allow \"Tool,Tool\"] [--require-box] -- \"<prompt>\""
 
     public static func parse(_ arguments: [String]) throws -> Options {
         var options = Options()
         var rest = arguments[...]
+        var allowGiven = false
         while let argument = rest.popFirst() {
             switch argument {
             case "--": options.prompt = rest.joined(separator: " "); rest = []
             case "--to": options.destination = rest.popFirst()
+            case "--harness":
+                guard let harness = rest.popFirst().flatMap(AgentHarness.init(rawValue:)) else { throw Failure.usage }
+                options.harness = harness
             case "--timeout":
                 guard let seconds = rest.popFirst().flatMap(duration) else { throw Failure.usage }
                 options.timeoutSeconds = seconds
@@ -29,17 +34,20 @@ public enum AgentRunCommand {
             case "--require-box": options.requireBox = true
             case "--allow":
                 guard let list = rest.popFirst() else { throw Failure.usage }
+                allowGiven = true
                 options.allowedTools += tools(in: list)
             default: throw Failure.usage
             }
         }
+        // Codex has no per-tool allowlist to pass on.
+        guard options.harness == .claude || !allowGiven else { throw Failure.usage }
         guard !options.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw Failure.usage }
         return options
     }
 
     public static func run(arguments: [String], environment: [String: String] = ProcessInfo.processInfo.environment) async -> Int32 {
         guard let options = try? parse(arguments) else { return RunCommand.fail(usage, code: 2) }
-        let task = AgentTask(prompt: options.prompt, unattended: options.unattended, allowedTools: options.allowedTools,
+        let task = AgentTask(harness: options.harness, prompt: options.prompt, unattended: options.unattended, allowedTools: options.allowedTools,
                              timeoutSeconds: options.timeoutSeconds, requireBox: options.requireBox)
         return await RunCommand.dispatch(command: task.argv(onBox: false), shell: false, destination: options.destination,
                                          agentTask: task, environment: environment)

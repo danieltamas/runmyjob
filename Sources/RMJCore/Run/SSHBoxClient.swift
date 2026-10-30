@@ -101,6 +101,11 @@ public struct SSHBoxClient: BoxClient {
         return directory
     }
 
+    public func ensureEgress(image: String, hosts: [String]) async throws {
+        let result = try await box(["egress", image, hosts.joined(separator: ",")], timeout: .seconds(120))
+        guard result.status == 0 else { throw BoxFailure("the box could not start the egress filter (exit \(result.status))") }
+    }
+
     public func discardSecret(ulid: String) async {
         _ = try? await box(["unsecret", ulid])
     }
@@ -108,14 +113,16 @@ public struct SSHBoxClient: BoxClient {
     public func pullTree(_ job: BoxJob, into local: URL) async throws {
         // The box releases the checkout's lock when the container ends; a run queued behind it syncs over the directory.
         // The result is only good if this job still held the lock before and after the pull.
-        func holds() async throws -> Bool {
-            guard let lock = job.locks.first else { return true }
+        func holds() async throws -> String? {
+            // Slot locks are interchangeable and have no holder file; the checkout lock is the first plain path.
+            guard let lock = job.locks.first(where: { !$0.hasPrefix("slots:") }) else { return nil }
             let result = try await box(["holder", lock])
-            return result.status == 0 && String(decoding: result.stdout, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) == job.ulid
+            let holder = String(decoding: result.stdout, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            return result.status == 0 && holder == job.ulid ? nil : "holder \(UntrustedText.clean(holder, limit: 30)), exit \(result.status)"
         }
-        guard try await holds() else { throw BoxFailure("another run took the checkout before the result was pulled") }
+        if let lost = try await holds() { throw BoxFailure("another run took the checkout before the result was pulled (\(lost))") }
         try await TreeSync.pull(source: "\(alias):\(job.directory)/", into: local, worktree: URL(fileURLWithPath: job.worktree), shell: try SSH.rsyncShell(address: address, alias: alias))
-        guard try await holds() else { throw BoxFailure("another run took the checkout while the result was pulled") }
+        if let lost = try await holds() { throw BoxFailure("another run took the checkout while the result was pulled (\(lost))") }
     }
 
     public func cancel(ulid: String) async throws {

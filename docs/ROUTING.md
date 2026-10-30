@@ -139,12 +139,13 @@ suite is never a reason; its exit code is returned as is.
 
 ## Agent runs
 
-`rmj agent run [--to <destination>] [--require-box] [--unattended] [--timeout 30m] [--allow <tools>] -- "<prompt>"`
+`rmj agent run [--harness claude|codex] [--to <destination>] [--require-box] [--unattended] [--timeout 30m] [--allow <tools>] -- "<prompt>"`
 routes `claude -p` like any command: a rule matching `command: ["claude"]` names the boxes and the image
 (`rx-claude`, built by Setup from `Support/box/images/claude`). `--to` names the destination and still takes that
 destination's claude rule for the image. No rule, no box, tailnet down or a missing image runs the task on the Mac and
 records why; `--require-box` fails the job instead (exit 3). Tenants apply unchanged. `--unattended` (bypassed permission
-prompts) is only ever passed inside the container, never to the Mac run. Details: docs/AGENTS-ON-BOXES.md.
+prompts) is only ever passed inside the container, never to the Mac run. `--harness codex` routes `codex exec` the same way through a rule on `command: ["codex"]` and the `rx-codex` image (`--allow`
+is Claude only). A destination takes `agent_slots` (default 2) agent runs at once. Details: docs/AGENTS-ON-BOXES.md.
 
 ## Reachability over Tailscale
 

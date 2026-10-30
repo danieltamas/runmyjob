@@ -186,6 +186,10 @@ struct AgentRunHardeningAcceptanceTests {
         #expect(await box.pullAttempts == 1)
         #expect(result.exitCode == 4 && result.state == .failed)
         #expect(f.git.home.notices.text.contains("result could not be imported"))
+        let row = try #require(try await f.git.home.ledger.job(result.jobID))
+        #expect(row.state == .done && row.exitCode == 0)
+        let events = try await f.git.home.ledger.events(result.jobID)
+        #expect(events.contains { $0.detail?.contains("could not be imported") == true })
         #expect(!FileManager.default.fileExists(atPath: f.local.path))
     }
 

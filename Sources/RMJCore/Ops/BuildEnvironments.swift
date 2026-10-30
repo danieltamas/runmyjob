@@ -21,6 +21,8 @@ public enum BuildEnvironments {
                          tools: ["bash", "zsh", "git", "jq", "go"]),
         BuildEnvironment(image: "rx-claude", summary: "Claude Code for agent runs",
                          tools: ["bash", "git", "jq", "claude"]),
+        BuildEnvironment(image: "rx-codex", summary: "Codex for agent runs",
+                         tools: ["bash", "git", "jq", "codex"]),
     ]
 
     public static func tools(for image: String) -> [String] {

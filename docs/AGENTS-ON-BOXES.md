@@ -15,9 +15,9 @@ result is a reviewable branch in the Mac worktree.
 
 ## Graceful and detected (same rules as builds)
 
-> Status 2026-10-30: shipped as U14 for Claude Code only, as an ordinary rule on `command: ["claude"]` rather than a new
-> rule kind. The egress allowlist and separate agent slots below are not in v1; the container uses docker's default
-> network. See docs/ARCHITECTURE.md, "Agent runs".
+> Status 2026-10-30: shipped as U14 for Claude Code and Codex (`--harness`), as ordinary rules on `command: ["claude"]`
+> or `["codex"]` rather than a new rule kind. Egress allowlist (an internal docker network and one filtering proxy) and
+> separate agent slots (`agent_slots`, default 2 per destination) are in. See docs/ARCHITECTURE.md, "Agent runs".
 
 - Opt-in by a rule of the new kind `agent` (harness, boxes, image, cpus, memory, egress). No rule, no box, tailnet down,
   box without free agent slots, image missing, no fresh access token: the agent runs locally, and the ledger

@@ -65,13 +65,13 @@ public struct RunEngine: Sendable {
     private let profiles: ProfileStore
     private let streamer: LogStreamer?
     private let boxLoadInterval: Duration
-    private let credentials: CredentialSource
+    private let credentials: CredentialSource?
 
     /// `output` gets the job's output, already cleaned of terminal escapes; `notice` gets rmj's own messages.
     public init(ledger: Ledger, archive: LogArchive, router: Router, boxes: BoxDirectory, probes: ProbeProvider, secrets: [String] = [],
                 output: @escaping @Sendable (Data) -> Void, notice: @escaping @Sendable (String) -> Void,
                 profiles: ProfileStore = ProfileStore(home: RMJHome()), streamer: LogStreamer? = nil, boxLoadInterval: Duration = .seconds(10),
-                now: @escaping @Sendable () -> Date = { Date() }, credentials: CredentialSource = KeychainCredentials()) {
+                now: @escaping @Sendable () -> Date = { Date() }, credentials: CredentialSource? = nil) {
         self.credentials = credentials
         self.profiles = profiles
         self.streamer = streamer
@@ -166,7 +166,7 @@ public struct RunEngine: Sendable {
         let allRules = boxes.rules.rules?.rules ?? []
         // `--to` skips the rules, but an agent run still needs the image its rule names: the destination's own claude rule.
         let rule = allRules.first { $0.name == decision.rule }
-            ?? (request.agentTask == nil ? nil : allRules.first { ($0.match.command ?? []).contains("claude") && $0.to.contains(destination) })
+            ?? (request.agentTask == nil ? nil : allRules.first { ($0.match.command ?? []).contains(request.agentTask?.harness.program ?? "") && $0.to.contains(destination) })
         let plan: DockerPlan
         do { plan = try DockerPlan.make(rule: rule, config: config, repo: request.identity.slug, directory: directory,
                                                     subdirectory: request.safeSubdirectory, profiles: profiles) } catch {
@@ -177,11 +177,11 @@ public struct RunEngine: Sendable {
                             options: plan.options, image: plan.image, locks: plan.locks, prelude: plan.prelude)
         var agent: AgentSession?
         if let task = request.agentTask {
-            switch await AgentSession.prepare(task, source: credentials, now: now()) {
+            switch await AgentSession.prepare(task, source: credentials ?? task.harness.defaultCredentials, now: now()) {
             case .success(let session): agent = session
             case .failure(let fallback): return .fallback(fallback.reason)
             }
-            boxJob = agent?.decorate(boxJob, home: config.home) ?? boxJob
+            boxJob = agent?.decorate(boxJob, home: config.home, slots: config.agentSlots) ?? boxJob
         }
         let client = boxes.factory.client(destination: destination, address: address, config: config)
         var stage = "destination unreachable"
@@ -202,8 +202,12 @@ public struct RunEngine: Sendable {
             done.syncEndedAt = now()
             try await ledger.fill(id, patch: done)
             try await ensureNotCancelled(id)
-            stage = "credentials could not be staged"
-            if let session = agent { boxJob = try await session.stage(boxJob, client: client) }
+            if let session = agent {
+                stage = "\(session.task.harness.program) login expires soon"
+                try session.ensureFresh(now: now())
+                stage = "egress filter or credentials could not be set up"
+                boxJob = try await session.stage(boxJob, client: client)
+            }
             goSent = true
             let launch = try await client.go(boxJob)
             if case .startFailed(let reason) = launch {
@@ -255,10 +259,14 @@ public struct RunEngine: Sendable {
             }
         }
         var result = await follow(id, boxJob, client: client, destination: destination, began: began,
-                                  secrets: secrets + [agent?.accessToken].compactMap { $0 }.filter { !$0.isEmpty })
+                                  secrets: secrets + (agent?.secrets ?? []), readable: request.agentTask?.harness == .claude)
         if let agent, result.state == .done || result.state == .failed {
             let imported = await agent.importResult(boxJob, client: client, worktree: request.identity.worktree)
             notice("rmj: " + imported.line)
+            // The box keeps the checkout locked until the result has been pulled.
+            await client.discardSecret(ulid: id)
+            // The row is settled by now; the event keeps what happened to the result next to the run.
+            _ = try? await ledger.advance(id, to: result.state, at: now(), detail: imported.line)
             // A finished task whose result could not be brought back is not a success the caller can build on.
             if !imported.ok, result.exitCode == 0 { result = RunResult(jobID: id, exitCode: 4, state: .failed) }
         }
@@ -268,7 +276,7 @@ public struct RunEngine: Sendable {
     /// Streams the log until the run ends, then records the outcome the box wrote. A dropped connection leaves
     /// the job running on the box; reconcile settles it later.
     private func follow(_ id: String, _ boxJob: BoxJob, client: BoxClient, destination: String, began: ContinuousClock.Instant,
-                        secrets: [String]) async -> RunResult {
+                        secrets: [String], readable: Bool = false) async -> RunResult {
         _ = try? await advance(id, .running) { $0.startedAt = now() }
         try? await archive.markPending(jobID: id, reason: "running", now: now())
         let stream = await openStream(id, secrets: secrets)
@@ -276,7 +284,9 @@ public struct RunEngine: Sendable {
         var streamed = true
         let recorder = LoadRecorder(sample: { await client.load(ulid: id) })
         await recorder.start(first: boxLoadInterval, every: boxLoadInterval)
-        do { try await client.tail(boxJob, output: pump.add) } catch { streamed = false }
+        let lines = AgentStream(emit: pump.add)
+        do { try await client.tail(boxJob, output: readable ? lines.add : pump.add) } catch { streamed = false }
+        lines.flush()
         let load = await recorder.stop()
         await pump.close()
         let asked = now()

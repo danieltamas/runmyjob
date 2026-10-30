@@ -132,8 +132,16 @@ box run (`AgentSession`, `AgentCredentials`, `AgentBranch`):
 4. `--require-box` turns every fallback (no rule, tailnet down, image missing, login expiring, ledger unavailable)
    into a failed job with exit 3 and the reason.
 
-Not in v1: an egress allowlist for the container (it uses docker's default network) and separate agent slots; the box
-keeps the raw output in its own log until `prune`, and the lock on the checkout is released before the result is pulled.
+5. Network: agent containers sit on the internal docker network `rmj-agents` (no route out) and reach the vendor only
+   through `rmj-egress`, a CONNECT proxy that tunnels HTTPS to the harness's hosts and refuses everything else
+   (`AgentHarness.egressHosts`; started by `rx-run.sh egress` before the login is staged).
+6. Slots: a destination admits `agent_slots` agent runs at a time (default 2, 1...16), a lock `slots:N:<home>/rx/.agent-slot`
+   taken before the checkout lock, so agents never use build slots.
+7. Visibility: on the box Claude runs with `--output-format stream-json`; the Mac turns the events into readable lines
+   (`AgentStream`) before the log archive and the panel see them. Codex prints its own progress.
+8. Agent containers keep no docker log (`--log-driver none`, attached by the waiter); the box log passes through a redaction filter (login tokens become `[redacted]`), and the staged login destroys itself
+   after 10 minutes if the run never starts. The waiter keeps the checkout locked after the container ends until the Mac
+   has pulled the result (`unsecret` releases it, or 10 minutes pass), so a queued run cannot sync over the files first.
 
 ## The GitHub side
 

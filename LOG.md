@@ -313,3 +313,26 @@ Optional log streaming, the Run report window, and no Open log button on a queue
   before the pull, and a root commit for an unborn HEAD. Re-run live, 468 tests green.
 - Still open: the box's own log keeps a token the agent prints, a run past a real token expiry, Codex agent runs, an egress
   allowlist, agent slots.
+
+## 2026-10-30 - U14 follow-ups: Codex, egress, slots, visible logs
+
+- `rmj agent run --harness codex`: Codex with the Mac's ChatGPT login (access and id token; the refresh token is blanked,
+  because Codex does not read a login without the field and a blank one cannot refresh anything), image `rx-codex`.
+- Egress: agent containers sit on the internal docker network `rmj-agents` and reach only the vendor hosts through the box's
+  `rmj-egress` proxy (one proxy, allowlist is the union of the hosts any harness asked for, read per connection). Live:
+  direct HTTPS fails, a host off the list is refused, api.anthropic.com answers, Claude and Codex both work through it.
+- Agent slots: `agent_slots` per destination (default 2, 1..16). Live, three runs on one repo: the third waited for "an agent
+  slot", all three results came back as separate branches with only their own file.
+- Log visibility: the box runs Claude with stream-json and the Mac shows the agent's messages and each tool call as they
+  happen (Run report, panel log, archive); before only the final reply showed. The redactor no longer holds back the length
+  of the longest secret, only a tail that could start one.
+- The box log redacts login tokens (live: the agent echoed a token-shaped string, `[redacted]` in the box's own log, none raw).
+  The staged login destroys itself after 10 minutes if the run never starts. The waiter keeps the checkout locked until the
+  Mac has pulled the result, so a queued run cannot sync over it (found live: the second of two queued runs lost its result).
+- Login lifetime must cover the task's timeout (at least 10 minutes), checked again after the queue and the sync. A dead token
+  fails fast in the container (exit 1, "OAuth access token is invalid"), checked live.
+- A failed import is a ledger event on the job and exit 4; the row stays `done` (the ledger cannot reopen a settled row).
+- Codex review round 3 (docs/reviews/u14-2026-10-30.md): 4 P1, 4 P2; all fixed.
+- Agent containers run with `--log-driver none` and are attached by the waiter, so docker never keeps the output: the only
+  copy is the redacted one (live: an echoed token-shaped string, none raw anywhere; cancel still removes the container).
+- Verified: 484 tests, `scripts/check.sh` ok.

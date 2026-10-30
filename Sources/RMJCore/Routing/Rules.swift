@@ -26,6 +26,8 @@ public struct DestinationConfig: Codable, Sendable, Equatable {
     public var roles: [String]
     public var home: String
     public var maxJobs: Int
+    /// Agent runs allowed at once on this box (default 2), so they cannot starve builds.
+    public var agentSlots: Int?
     public var memoryBudget: String
     public var rxDefaults: Defaults?
     public var runnerStack: String?
@@ -42,7 +44,7 @@ public struct DestinationConfig: Codable, Sendable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case enabled, tenant, roles, home
-        case peerID = "peer_id", sshAlias = "ssh_alias", maxJobs = "max_jobs", memoryBudget = "memory_budget"
+        case peerID = "peer_id", sshAlias = "ssh_alias", maxJobs = "max_jobs", memoryBudget = "memory_budget", agentSlots = "agent_slots"
         case rxDefaults = "rx_defaults", runnerStack = "runner_stack", runnerTargets = "runner_targets"
         case requires
     }
