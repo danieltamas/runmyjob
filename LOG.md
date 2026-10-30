@@ -354,3 +354,11 @@ Optional log streaming, the Run report window, and no Open log button on a queue
 - Nothing is installed on the box: six more read-only steps in the one ssh call (`systemd-detect-virt`, `/proc`, `/sys`). `ai-gamerina-eu` is WSL2 and exposes no temperature or fan files, so it shows the software chips only (checked live: `wsl`, counters, PSI; hwmon empty).
 - Rates (CPU busy, network) are computed on the Mac from two probes; a reboot voids the interval.
 - Codex acceptance tests: 19 (Tests/RMJCoreTests/BoxSensorsAcceptanceTests.swift).
+
+## 2026-10-31 - release 0.8.0
+
+- Destination cards show the box's own sensors: CPU busy, memory used, load, disk used, download and upload as small icon chips, and, when the card is open, as tiles with what each value is out of (24 cores, 36 GB, 1.0 TB) and a sparkline of the last 30 minutes. Uptime, swap in use, temperature and fans (only where the box exposes them) join the tiles. The chips fold away as the card opens.
+- Read by the existing probe with six read-only steps; nothing is installed on the box. A WSL, VM or container box shows software sensors only, never an empty temperature or fan slot. CPU and network rates come from two probes and are voided by a reboot.
+- Fixed in review: interface names such as `tailscale0` shifted the network counters; container traffic was counted twice (virtual interfaces are now left out).
+- Verified: 503 tests, scripts/check.sh ok; Codex review in docs/reviews/u15-2026-10-31.md; probe steps run live on a WSL box.
+- Not verified: the idle CPU budget on the owner's live app (0.44% and 0.54% against 0.4% in the 0.7.0 runs, panel open and other agents running); a clean 600 s run with the panel closed is still to do.
