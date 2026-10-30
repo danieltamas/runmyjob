@@ -13,10 +13,14 @@ public struct RunRequest: Sendable {
     public var agent: AgentContext
     /// Where in the checkout the command was given, relative to its root; the command runs there.
     public var subdirectory: String
+    /// Set for `rmj agent run`: the box runs the task's own argv with the Mac's login, and the result comes back as a branch.
+    public var agentTask: AgentTask?
 
     public init(command: [String], shell: Bool = false, identity: RepoIdentity, branch: String? = nil, commit: String? = nil,
-                destination: String? = nil, forceLocal: Bool = false, agent: AgentContext = AgentContext(agent: "terminal"), subdirectory: String = "") {
+                destination: String? = nil, forceLocal: Bool = false, agent: AgentContext = AgentContext(agent: "terminal"), subdirectory: String = "",
+                agentTask: AgentTask? = nil) {
         self.subdirectory = subdirectory
+        self.agentTask = agentTask
         self.command = command
         self.shell = shell
         self.identity = identity
@@ -61,11 +65,14 @@ public struct RunEngine: Sendable {
     private let profiles: ProfileStore
     private let streamer: LogStreamer?
     private let boxLoadInterval: Duration
+    private let credentials: CredentialSource
 
     /// `output` gets the job's output, already cleaned of terminal escapes; `notice` gets rmj's own messages.
     public init(ledger: Ledger, archive: LogArchive, router: Router, boxes: BoxDirectory, probes: ProbeProvider, secrets: [String] = [],
                 output: @escaping @Sendable (Data) -> Void, notice: @escaping @Sendable (String) -> Void,
-                profiles: ProfileStore = ProfileStore(home: RMJHome()), streamer: LogStreamer? = nil, boxLoadInterval: Duration = .seconds(10), now: @escaping @Sendable () -> Date = { Date() }) {
+                profiles: ProfileStore = ProfileStore(home: RMJHome()), streamer: LogStreamer? = nil, boxLoadInterval: Duration = .seconds(10),
+                now: @escaping @Sendable () -> Date = { Date() }, credentials: CredentialSource = KeychainCredentials()) {
+        self.credentials = credentials
         self.profiles = profiles
         self.streamer = streamer
         self.boxLoadInterval = boxLoadInterval
@@ -103,15 +110,23 @@ public struct RunEngine: Sendable {
         job.agent = request.agent.agent
         job.session = request.agent.session
         do { try await ledger.insert(job) } catch {
+            if request.agentTask?.requireBox == true {
+                notice("rmj: not run, a box was required and the ledger is unavailable (\(UntrustedText.clean(error.localizedDescription)))")
+                return RunResult(jobID: id, exitCode: 3, state: .failed)
+            }
             notice("rmj: the ledger is unavailable (\(UntrustedText.clean(error.localizedDescription))); running on this Mac without a record")
             let code = await runUntracked(request)
             return RunResult(jobID: id, exitCode: code, state: code == 0 ? .done : .failed)
         }
         if let advisory = decision.advisory { notice("rmj: \(advisory)") }
+        if request.agentTask?.requireBox == true, destination == nil {
+            return await refuse(id, reason: decision.fallbackReason ?? "no box serves this task")
+        }
         if case .destination(let name, let address) = decision.location, let config = boxes.rules.rules?.destinations[name] {
             switch await runOnBox(job, request, decision: decision, destination: name, address: address, config: config, began: began) {
             case .finished(let result): return result
             case .fallback(let reason):
+                if request.agentTask?.requireBox == true { return await refuse(id, reason: reason) }
                 // A row someone else settled meanwhile (a cancel) is not run on the Mac behind their back.
                 guard (try? await ledger.relocate(id, toLocalBecause: reason, at: now())) == true else {
                     let state = (try? await ledger.job(id))?.state ?? .failed
@@ -123,21 +138,51 @@ public struct RunEngine: Sendable {
         return await runLocal(id, request, began: began)
     }
 
+    /// `--require-box`: a task that must not run on the Mac fails, with the reason, instead of falling back.
+    private func refuse(_ id: String, reason: String) async -> RunResult {
+        var patch = JobPatch()
+        patch.endedAt = now()
+        patch.exitCode = 3
+        patch.fallbackReason = reason
+        _ = try? await ledger.advance(id, to: .failed, at: now(), detail: "not run:\(reason)", patch: patch)
+        notice("rmj: not run, a box was required: \(reason)")
+        return RunResult(jobID: id, exitCode: 3, state: .failed)
+    }
+
     // MARK: box
 
     private func runOnBox(_ job: JobRecord, _ request: RunRequest, decision: RouteDecision, destination: String, address: String,
                           config: DestinationConfig, began: ContinuousClock.Instant) async -> BoxOutcome {
+        let outcome = await launchOnBox(job, request, decision: decision, destination: destination, address: address, config: config, began: began)
+        // Whatever happened, no login stays on the box once the run is over.
+        if request.agentTask != nil { await boxes.factory.client(destination: destination, address: address, config: config).discardSecret(ulid: job.id) }
+        return outcome
+    }
+
+    private func launchOnBox(_ job: JobRecord, _ request: RunRequest, decision: RouteDecision, destination: String, address: String,
+                             config: DestinationConfig, began: ContinuousClock.Instant) async -> BoxOutcome {
         let id = job.id
         let directory = DockerPlan.directory(home: config.home, repo: request.identity.slug, worktree: request.identity.worktree)
-        let rule = boxes.rules.rules?.rules.first { $0.name == decision.rule }
+        let allRules = boxes.rules.rules?.rules ?? []
+        // `--to` skips the rules, but an agent run still needs the image its rule names: the destination's own claude rule.
+        let rule = allRules.first { $0.name == decision.rule }
+            ?? (request.agentTask == nil ? nil : allRules.first { ($0.match.command ?? []).contains("claude") && $0.to.contains(destination) })
         let plan: DockerPlan
         do { plan = try DockerPlan.make(rule: rule, config: config, repo: request.identity.slug, directory: directory,
                                                     subdirectory: request.safeSubdirectory, profiles: profiles) } catch {
             return .fallback("no container for this rule")
         }
-        let boxJob = BoxJob(ulid: id, name: ULID.containerName(repo: request.identity.slug, ulid: id), worktree: request.identity.worktree,
+        var boxJob = BoxJob(ulid: id, name: ULID.containerName(repo: request.identity.slug, ulid: id), worktree: request.identity.worktree,
                             directory: directory, argv: request.shell ? ["bash", "-c", request.command.joined(separator: " ")] : request.command,
                             options: plan.options, image: plan.image, locks: plan.locks, prelude: plan.prelude)
+        var agent: AgentSession?
+        if let task = request.agentTask {
+            switch await AgentSession.prepare(task, source: credentials, now: now()) {
+            case .success(let session): agent = session
+            case .failure(let fallback): return .fallback(fallback.reason)
+            }
+            boxJob = agent?.decorate(boxJob, home: config.home) ?? boxJob
+        }
         let client = boxes.factory.client(destination: destination, address: address, config: config)
         var stage = "destination unreachable"
         var goSent = false
@@ -149,12 +194,16 @@ public struct RunEngine: Sendable {
             }
             try await ensureNotCancelled(id)
             try await advance(id, .syncing) { $0.syncStartedAt = now() }
+            stage = "snapshot failed"
+            try await agent?.snapshot(worktree: request.identity.worktree)
             stage = "sync failed"
             try await client.sync(boxJob)
             var done = JobPatch()
             done.syncEndedAt = now()
             try await ledger.fill(id, patch: done)
             try await ensureNotCancelled(id)
+            stage = "credentials could not be staged"
+            if let session = agent { boxJob = try await session.stage(boxJob, client: client) }
             goSent = true
             let launch = try await client.go(boxJob)
             if case .startFailed(let reason) = launch {
@@ -205,15 +254,24 @@ public struct RunEngine: Sendable {
                 return .finished(RunResult(jobID: id, exitCode: 1, state: .lost))
             }
         }
-        return .finished(await follow(id, boxJob, client: client, destination: destination, began: began))
+        var result = await follow(id, boxJob, client: client, destination: destination, began: began,
+                                  secrets: secrets + [agent?.accessToken].compactMap { $0 }.filter { !$0.isEmpty })
+        if let agent, result.state == .done || result.state == .failed {
+            let imported = await agent.importResult(boxJob, client: client, worktree: request.identity.worktree)
+            notice("rmj: " + imported.line)
+            // A finished task whose result could not be brought back is not a success the caller can build on.
+            if !imported.ok, result.exitCode == 0 { result = RunResult(jobID: id, exitCode: 4, state: .failed) }
+        }
+        return .finished(result)
     }
 
     /// Streams the log until the run ends, then records the outcome the box wrote. A dropped connection leaves
     /// the job running on the box; reconcile settles it later.
-    private func follow(_ id: String, _ boxJob: BoxJob, client: BoxClient, destination: String, began: ContinuousClock.Instant) async -> RunResult {
+    private func follow(_ id: String, _ boxJob: BoxJob, client: BoxClient, destination: String, began: ContinuousClock.Instant,
+                        secrets: [String]) async -> RunResult {
         _ = try? await advance(id, .running) { $0.startedAt = now() }
         try? await archive.markPending(jobID: id, reason: "running", now: now())
-        let stream = await openStream(id)
+        let stream = await openStream(id, secrets: secrets)
         let pump = OutputPump(writer: try? archive.writer(jobID: id, side: "box", secrets: secrets), output: output, secrets: secrets, logStream: stream)
         var streamed = true
         let recorder = LoadRecorder(sample: { await client.load(ulid: id) })
@@ -248,7 +306,7 @@ public struct RunEngine: Sendable {
     }
 
     /// The job's log stream, when a sink is on for its tenant.
-    private func openStream(_ id: String) async -> LogStream? {
+    private func openStream(_ id: String, secrets: [String]) async -> LogStream? {
         guard let streamer, let job = try? await ledger.job(id) else { return nil }
         return streamer.begin(job: id, repo: job.repo, tenant: job.tenant, branch: job.branch, agent: job.agent,
                               destination: job.destination ?? "local", secrets: secrets)
@@ -260,7 +318,7 @@ public struct RunEngine: Sendable {
         LocalClient.record(id, in: archive.directory)
         defer { LocalClient.clear(id, in: archive.directory) }
         _ = try? await advance(id, .running) { $0.startedAt = now() }
-        let stream = await openStream(id)
+        let stream = await openStream(id, secrets: secrets)
         let pump = OutputPump(writer: try? archive.writer(jobID: id, side: "mac", secrets: secrets), output: output, secrets: secrets, logStream: stream)
         var status: Int32 = 127
         let recorder = LoadRecorder()
@@ -315,6 +373,8 @@ public struct RunEngine: Sendable {
         guard !job.state.isSettled else { return .alreadySettled }
         guard let destination = job.destination, let client = boxes.client(for: destination) else { return .unreachable }
         do { try await client.cancel(ulid: id) } catch { return .unreachable }
+        // An agent run's login leaves the box with the container.
+        await client.discardSecret(ulid: id)
         var gone = false
         var last: BoxRecord?
         for _ in 0..<20 {

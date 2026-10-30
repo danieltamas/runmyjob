@@ -36,8 +36,16 @@ public enum RunCommand {
             }
         }
         guard !command.isEmpty else { return fail("no command after --\nusage: rmj run [--to destination] [--shell] -- <command...>", code: 2) }
+        return await dispatch(command: command, shell: shell, destination: destination, environment: environment)
+    }
+
+    /// Routes and runs one command from the current directory; `agentTask` makes it an agent run.
+    static func dispatch(command: [String], shell: Bool, destination: String?, agentTask: AgentTask? = nil, environment: [String: String]) async -> Int32 {
         let context: Context
         do { context = try await open(environment: environment) } catch {
+            if agentTask?.requireBox == true {
+                return fail("cannot open \(RMJHome(environment: environment).url.path): \(error.localizedDescription); not run, a box was required", code: 3)
+            }
             // No ledger is no reason not to run the command.
             _ = fail("cannot open \(RMJHome(environment: environment).url.path): \(error.localizedDescription); running on this Mac without a record", code: 0)
             let pump = OutputPump(writer: nil, output: { FileHandle.standardOutput.write($0) }, secrets: [])
@@ -66,7 +74,7 @@ public enum RunCommand {
         let relative = here.hasPrefix(root + "/") ? String(here.dropFirst(root.count + 1)) : ""
         let request = RunRequest(command: command, shell: shell, identity: identity, branch: facts.branch, commit: facts.commit,
                                  destination: destination, forceLocal: environment["RX_LOCAL"] == "1",
-                                 agent: AgentContext.detect(environment: environment), subdirectory: relative)
+                                 agent: AgentContext.detect(environment: environment), subdirectory: relative, agentTask: agentTask)
         let result = await engine.run(request)
         return result.exitCode
     }

@@ -22,8 +22,8 @@ public struct SSHBoxClient: BoxClient {
         return try await runner.run("/usr/bin/ssh", arguments, input: input, timeout: timeout, output: output)
     }
 
-    private func box(_ words: [String], timeout: Duration = .seconds(60), output: (@Sendable (Data) -> Void)? = nil) async throws -> ProcessOutput {
-        try await ssh([script] + words, timeout: timeout, output: output)
+    private func box(_ words: [String], input: Data? = nil, timeout: Duration = .seconds(60), output: (@Sendable (Data) -> Void)? = nil) async throws -> ProcessOutput {
+        try await ssh([script] + words, input: input, timeout: timeout, output: output)
     }
 
     private func put(_ content: String, to path: String, mode: String = "755") async throws {
@@ -92,6 +92,21 @@ public struct SSHBoxClient: BoxClient {
     public func load(ulid: String) async -> JobLoad? {
         guard let result = try? await box(["stats", ulid], timeout: .seconds(20)), result.status == 0 else { return nil }
         return BoxLoad.parse(String(decoding: result.stdout, as: UTF8.self))
+    }
+
+    public func stageSecret(ulid: String, name: String, content: Data) async throws -> String {
+        let result = try await box(["secret", ulid, name], input: content)
+        let directory = String(decoding: result.stdout, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard result.status == 0, !directory.isEmpty else { throw BoxFailure("the box could not stage the credentials (exit \(result.status))") }
+        return directory
+    }
+
+    public func discardSecret(ulid: String) async {
+        _ = try? await box(["unsecret", ulid])
+    }
+
+    public func pullTree(_ job: BoxJob, into local: URL) async throws {
+        try await TreeSync.pull(source: "\(alias):\(job.directory)/", into: local, worktree: URL(fileURLWithPath: job.worktree), shell: try SSH.rsyncShell(address: address, alias: alias))
     }
 
     public func cancel(ulid: String) async throws {

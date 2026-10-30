@@ -125,7 +125,7 @@ public struct Ledger: Sendable {
             ("box_ended_at", .optional(Self.ms(patch.boxEndedAt))), ("box_exit", .optional(patch.boxExit.map(Int64.init))),
             ("mac_elapsed_ms", .optional(patch.macElapsedMS.map(Int64.init))), ("clock_offset_ms", .optional(patch.clockOffsetMS.map(Int64.init))),
             ("avg_cpu", .optional(patch.avgCPU)), ("avg_memory_bytes", .optional(patch.avgMemoryBytes)),
-            ("github", .optional(scrub(patch.github))),
+            ("github", .optional(scrub(patch.github))), ("fallback_reason", .optional(scrub(patch.fallbackReason))),
         ]
     }
 

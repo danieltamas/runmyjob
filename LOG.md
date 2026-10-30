@@ -290,3 +290,24 @@ Optional log streaming, the Run report window, and no Open log button on a queue
 - Verified: scripts/check.sh green (441 tests); Codex review in docs/reviews/box-images-list-2026-10-30.md.
 - Not verified: the card on a real box after the update (the next probe fills it).
 
+
+## 2026-10-30 - U14 agent runs (`rmj agent run`)
+
+- `rmj agent run [--to box] [--require-box] [--unattended] [--timeout 30m] -- "<prompt>"` runs Claude Code on a box with
+  the Mac's own login and brings the result back as a branch `rmj/agent/<job id>`; the working tree, its index and HEAD are
+  never touched. Design and measurements: docs/AGENTS-ON-BOXES.md (the same read-only task: 9-10 CPU-seconds on the Mac,
+  0.23 on the box, wall time equal or better; six at once 66 CPU-seconds locally against 1.5).
+- Credentials: only the access token goes to the box (refresh token stays in the Keychain), over ssh stdin to tmpfs, into the
+  container's memory, removed at run end, on failure and on cancel. Under 10 minutes of lifetime falls back to the Mac with
+  `claude login expires soon`.
+- Tests: Codex wrote 4 acceptance suites (engine, branch, command, hardening); fixture problems went back to Codex with
+  evidence (probe lacked the image, state walker counted git objects). Full suite and `scripts/check.sh` green.
+- Codex review: docs/reviews/u14-2026-10-30.md. Round 1 had 4 P0 (git filters on the import, credentials landing on the
+  container disk, token not redacted, secret directory reuse), 5 P1, 5 P2; all P0 and the fixable P1/P2 are done, the rest
+  is listed there with reasons. Round 2: 0 P0, 1 P1 (raw token in the box's own log when the agent prints it).
+- Live, `ai-gamerina-eu`: a throwaway repo with a gamerina remote, task "fix add() and add a docstring": exit 0 in 13 s wall,
+  0.38 CPU-s on the Mac, branch with exactly the two-line change, checkout unchanged, no `rmj-*` directory left in /dev/shm,
+  no `sk-ant` string in the box logs or in `~/.rmj`. Found live: `--to` skipped the rule and so the image ("no container for
+  this rule"); fixed.
+- Still open: Codex agent runs, a run past a real token expiry, an egress allowlist, agent slots, and a kill deadline after the
+  TERM timeout (the argv is fixed by the acceptance tests).

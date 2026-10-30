@@ -104,6 +104,7 @@ public struct JobPatch: Sendable {
     public var avgCPU: Double?
     public var avgMemoryBytes: Int64?
     public var github: String?
+    public var fallbackReason: String?
 
     public init() {}
 }

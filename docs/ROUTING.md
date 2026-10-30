@@ -137,6 +137,15 @@ tenant ...`, `<dest> at max_jobs`, `<dest> over memory budget`, `unclassified re
 `rules invalid: ...`, `sync failed`, `container start failed`, `forced` (`RX_LOCAL=1`). A red
 suite is never a reason; its exit code is returned as is.
 
+## Agent runs
+
+`rmj agent run [--to <destination>] [--require-box] [--unattended] [--timeout 30m] [--allow <tools>] -- "<prompt>"`
+routes `claude -p` like any command: a rule matching `command: ["claude"]` names the boxes and the image
+(`rx-claude`, built by Setup from `Support/box/images/claude`). `--to` names the destination and still takes that
+destination's claude rule for the image. No rule, no box, tailnet down or a missing image runs the task on the Mac and
+records why; `--require-box` fails the job instead (exit 3). Tenants apply unchanged. `--unattended` (bypassed permission
+prompts) is only ever passed inside the container, never to the Mac run. Details: docs/AGENTS-ON-BOXES.md.
+
 ## Reachability over Tailscale
 
 RMJ depends on Tailscale and says so. At every connect, in order:

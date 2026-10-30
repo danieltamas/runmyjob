@@ -31,14 +31,10 @@ public enum TreeSync {
     /// `destination` is `alias:/dir/` over ssh (with `shell`) or a local directory (tests).
     public static func run(worktree: URL, destination: String, shell: String?, runner: ProcessRunner = ProcessRunner()) async throws {
         guard let rsync = rsyncPath() else { throw Failure.noRsync }
-        let ignored = try await runner.run("/usr/bin/git", ["-C", worktree.path, "ls-files", "-z", "-o", "-i", "--exclude-standard", "--directory"],
-                                           timeout: .seconds(60))
         let list = FileManager.default.temporaryDirectory.appendingPathComponent("rmj-sync-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: list) }
         // Without the list, ignored files (an .env, credentials) would be sent: no list, no sync.
-        guard ignored.status == 0, ignored.stdout.count < ProcessRunner.collectedLimit else { throw Failure.gitFailed }
-        guard FileManager.default.createFile(atPath: list.path, contents: exclusions(from: ignored.stdout),
-                                             attributes: [.posixPermissions: 0o600]) else { throw CocoaError(.fileWriteUnknown) }
+        try await writeIgnoredList(worktree: worktree, to: list, runner: runner)
         // openrsync (the system rsync on recent macOS) ignores protect rules, so with --delete-excluded it would delete the
         // box's own files; without it, excluded names are simply left alone on the box.
         let version = try? await runner.run(rsync, ["--version"], timeout: .seconds(10))
@@ -48,6 +44,44 @@ public enum TreeSync {
         arguments += ["--exclude-from=\(list.path)"] + fixedExcludes.flatMap { ["--exclude", $0] }
         if let shell { arguments += ["-e", shell] }
         arguments += [worktree.path + "/", destination]
+        let output = try await runner.run(rsync, arguments, timeout: .seconds(1800))
+        guard output.status == 0 else {
+            throw Failure.rsyncFailed(output.status, UntrustedText.clean(output.stderr.split(separator: "\n").first.map(String.init) ?? "", limit: 200))
+        }
+    }
+
+    /// The untracked, ignored paths of the checkout as rsync exclusions: git decides, not a pattern file the box could change.
+    private static func writeIgnoredList(worktree: URL, to list: URL, runner: ProcessRunner) async throws {
+        let ignored = try await runner.run("/usr/bin/git", ["-C", worktree.path, "ls-files", "-z", "-o", "-i", "--exclude-standard", "--directory"],
+                                           timeout: .seconds(60))
+        guard ignored.status == 0, ignored.stdout.count < ProcessRunner.collectedLimit else { throw Failure.gitFailed }
+        guard FileManager.default.createFile(atPath: list.path, contents: exclusions(from: ignored.stdout),
+                                             attributes: [.posixPermissions: 0o600]) else { throw CocoaError(.fileWriteUnknown) }
+    }
+
+    /// Whether the sync leaves this tracked path out: the same rules as `fixedExcludes`, for code that has to agree with it.
+    static func isExcluded(_ path: String) -> Bool {
+        let parts = path.split(separator: "/").map(String.init)
+        return fixedExcludes.contains { pattern in
+            if pattern.hasPrefix("/") {
+                let anchored = pattern.dropFirst().split(separator: "/").map(String.init)
+                return parts.starts(with: anchored)
+            }
+            return parts.contains(pattern)
+        }
+    }
+
+    /// Brings a box directory back into `local`, the reverse of `run`: no deletes, symlinks that leave the tree and files
+    /// over 25 MB are skipped, and what the Mac's git ignores (installed packages, build output) is not fetched.
+    public static func pull(source: String, into local: URL, worktree: URL, shell: String?, runner: ProcessRunner = ProcessRunner()) async throws {
+        guard let rsync = rsyncPath() else { throw Failure.noRsync }
+        let list = FileManager.default.temporaryDirectory.appendingPathComponent("rmj-pull-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: list) }
+        try await writeIgnoredList(worktree: worktree, to: list, runner: runner)
+        var arguments = ["-rlt", "--safe-links", "--max-size=25m", "--from0", "--exclude-from=\(list.path)"]
+        arguments += fixedExcludes.flatMap { ["--exclude", $0] }
+        if let shell { arguments += ["-e", shell] }
+        arguments += [source, local.path + "/"]
         let output = try await runner.run(rsync, arguments, timeout: .seconds(1800))
         guard output.status == 0 else {
             throw Failure.rsyncFailed(output.status, UntrustedText.clean(output.stderr.split(separator: "\n").first.map(String.init) ?? "", limit: 200))

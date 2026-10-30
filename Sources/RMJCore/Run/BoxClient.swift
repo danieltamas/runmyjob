@@ -144,6 +144,16 @@ public struct BoxJob: Sendable, Equatable {
         self.prelude = prelude
     }
 
+    /// The job with one more mount, placed before `--entrypoint`: docker's options end there and the job's command begins.
+    func adding(volume: String) -> BoxJob { adding(options: ["-v", volume]) }
+
+    func adding(options extra: [String]) -> BoxJob {
+        var added = options
+        added.insert(contentsOf: extra, at: added.firstIndex(of: "--entrypoint") ?? added.endIndex)
+        return BoxJob(ulid: ulid, name: name, worktree: worktree, directory: directory, argv: argv, options: added, image: image,
+                      locks: locks, prelude: prelude)
+    }
+
     public static func == (lhs: BoxJob, rhs: BoxJob) -> Bool {
         lhs.ulid == rhs.ulid && lhs.name == rhs.name && lhs.argv == rhs.argv && lhs.directory == rhs.directory
             && lhs.options == rhs.options && lhs.image == rhs.image && lhs.locks == rhs.locks
@@ -171,10 +181,19 @@ public protocol BoxClient: Sendable {
     func cancel(ulid: String) async throws
     /// The job's container cpu and memory right now; nil when the box cannot say.
     func load(ulid: String) async -> JobLoad?
+    /// Writes `content` to a private tmpfs directory of this job on the box and returns the directory; never to a disk.
+    func stageSecret(ulid: String, name: String, content: Data) async throws -> String
+    /// Removes that directory. Best effort: the box also drops stale ones.
+    func discardSecret(ulid: String) async
+    /// Mirrors the job's directory on the box into `local`, leaving out what an agent run must not bring back.
+    func pullTree(_ job: BoxJob, into local: URL) async throws
 }
 
 public extension BoxClient {
     func load(ulid: String) async -> JobLoad? { nil }
+    func stageSecret(ulid: String, name: String, content: Data) async throws -> String { throw BoxFailure("this destination cannot stage credentials") }
+    func discardSecret(ulid: String) async {}
+    func pullTree(_ job: BoxJob, into local: URL) async throws { throw BoxFailure("this destination cannot return a tree") }
 }
 
 public protocol BoxFactory: Sendable {

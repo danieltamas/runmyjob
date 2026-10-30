@@ -123,6 +123,7 @@ the unit's final diff, re-run after the last fix; "prints 0" means no P0, P1 or 
 | U11 | Updater, About, login item, notifications | U0, U7 | App target, Core Release |
 | U12 | Release: signing, installer, README media, first public release | U0-U11 | scripts, README, docs, SECURITY |
 | U13 | s1 as the first destination added through the app (Globex; execution after the owner's go) | U6, U7 | docs, LOG |
+| U14 | Agent runs: `rmj agent run` (Claude Code in a container on a box, access token only, result as a branch) | U4 | Core Run, CLI, Support/box, tests |
 
 ## Units
 
@@ -557,6 +558,67 @@ Acceptance: the add flow's checks pass on s1; a gateway workflow job runs on its
 appears in Jobs; `rmj run` from a Globex checkout lands on s1 and is denied for `ai-eu-1`.
 
 /goal: those three facts recorded in LOG.md with run ids.
+
+### U14. Agent runs
+Design and measurements: `docs/AGENTS-ON-BOXES.md`. An agent run is an ordinary run (U4) of `claude -p` in the `rx-claude`
+image, plus three things around it: the Mac's Claude login reaches the container without touching the box's disk, the box
+enforces a deadline, and the result comes back as a branch.
+
+Interfaces (RMJCore/Run, public unless noted):
+- `AgentTask { prompt: String, unattended: Bool, allowedTools: [String], timeoutSeconds: Int, requireBox: Bool }` with
+  `func argv(onBox: Bool) -> [String]`. Box argv: `["timeout", "--signal=TERM", "<timeoutSeconds>", "claude", "-p", prompt,
+  "--permission-mode", unattended ? "bypassPermissions" : "acceptEdits"] + (allowedTools.isEmpty ? [] : ["--allowedTools"] + allowedTools)`.
+  Local argv: `["claude", "-p", prompt]` plus the same `--allowedTools` words, and never a permission mode.
+- `RunRequest.agentTask: AgentTask?` (init parameter, default nil). `RunRequest.command` carries the local argv.
+- `protocol CredentialSource { func load() async throws -> Data }` returning the raw JSON of the Claude Code Keychain item
+  (`{"claudeAiOauth": {accessToken, refreshToken, expiresAt (ms), ...}}`); `KeychainCredentials` reads it with
+  `/usr/bin/security find-generic-password -s "Claude Code-credentials" -w`. `RunEngine.init(..., credentials: CredentialSource)`.
+- `AgentCredentials.stage(raw: Data, now: Date, minimumLifetime: TimeInterval) throws -> Data`: the JSON to put on the box,
+  with `refreshToken` and `refreshTokenExpiresAt` removed; throws `AgentCredentials.Failure.expiresSoon` or `.unreadable`.
+- `BoxClient` gains, with default implementations that throw `BoxFailure("unsupported")` / do nothing so existing fakes compile:
+  `stageSecret(ulid:name:content:) async throws -> String` (the directory path on the box), `discardSecret(ulid:) async`,
+  `pullTree(_ job: BoxJob, into local: URL) async throws`.
+- `AgentBranch.snapshot(worktree: URL) async throws -> String` (tree id of what the sync sends) and
+  `AgentBranch.record(worktree: URL, base: String, result: URL, jobID: String, message: String) async throws -> AgentBranch.Outcome`
+  (`.unchanged` or `.created(branch: String, commit: String)`).
+- CLI: `rmj agent run [--to dest] [--timeout 30m] [--unattended] [--allow "Tool,Tool"] [--require-box] -- "<prompt>"`.
+
+Behaviour:
+- Routing is the existing router with the command word `claude`: a rule `{match: {command: ["claude"]}, to: [...], image:
+  "rx-claude", cpus: 2, memory: "4g"}` opts in. No matching rule, no box, tailnet down, a failed sync: the agent runs on the
+  Mac (local argv), the ledger says why. `--require-box` turns every such fallback into a failed job (exit 3), nothing runs.
+- Credentials: read on the Mac before the lock is taken; the access token must have at least 10 minutes left, else the run
+  falls back (reason `claude login expires soon`). The staged JSON is written by `rx-run.sh secret` into a 0700 directory on
+  tmpfs (`$XDG_RUNTIME_DIR` or `/dev/shm`), bind-mounted at `/run/rmj`, moved into `$HOME/.claude/.credentials.json` inside the
+  container by a prelude, and removed (`unsecret`) when the run ends or fails to start. The token is never in argv, `docker
+  inspect`, the prelude, the ledger, a log or a notification. The refresh token never leaves the Mac.
+- Result: before the sync, `AgentBranch.snapshot` writes a tree of the worktree as the sync sees it (HEAD plus uncommitted
+  and untracked-unignored files, minus the sync's own excludes). After the run, `pullTree` mirrors the box directory into a
+  temp directory (rsync `--safe-links`, no `.git`, `.rmj`, `node_modules`, `target`, files over 25 MB skipped), and
+  `AgentBranch.record` makes a tree from it with a temporary index (seeded from the base tree, so tracked files the sync
+  excludes stay), and if it differs creates a commit with HEAD as parent and the ref `refs/heads/rmj/agent/<job id>`. Git
+  plumbing only: the worktree, its index, its HEAD and its branches are never written; no `git apply`, no checkout. A `.git`
+  directory, a symlink that leaves the tree and oversized files in the result are not imported.
+- The deadline is `timeout` inside the container; the box also removes the container on cancel as for any run.
+
+Acceptance:
+- No rule for `claude`, or the tailnet down: the command runs on the Mac with the local argv and the row's fallback reason is
+  set; with `--require-box` the job is `failed`, exit 3, and nothing ran.
+- A fake box sees `stageSecret` before `go`, with JSON that has `accessToken` and no `refreshToken`; the strings of both tokens
+  appear in no `go` argument, no option, no prelude, no ledger column or event, no log and no notice; `discardSecret` is called
+  after a normal run, a failed run, a start failure and a cancel.
+- A token with less than 10 minutes left falls back with reason `claude login expires soon` and stages nothing.
+- Box argv starts with `timeout --signal=TERM <seconds>`; `--unattended` appears only in the box argv, never in the local one.
+- Result branch: a modified, a new and a deleted file (plus a file that was uncommitted before the run) produce a commit on
+  `rmj/agent/<id>` whose parent is the HEAD at the start and whose tree equals the box's tree; an unchanged tree creates no branch.
+- The worktree is byte-identical afterwards (files, index, HEAD, branch list apart from the new ref, `git status` output).
+- Hostile result (a `.git` directory with a hook, a symlink to `/etc/passwd`, a 30 MB file, a file named `a\nb`, a `.gitmodules`):
+  no file outside the temp directory is read or written, the branch contains no `.git`, no outside symlink, no oversized file.
+- `rmj agent run` parses its options; an unknown option is exit 2.
+
+/goal: the acceptance tests green; live: `rmj agent run --to ai-eu-1 -- "<task>"` on a Rust or Node repo returns a branch whose
+diff is the task, the box holds no token afterwards (`grep` of /dev/shm, the home and docker inspect finds nothing), and
+`$SCRATCH/review-out.md` prints 0 P0-P2.
 
 ## Quality criteria (every unit)
 

@@ -109,6 +109,32 @@ green.
    each open job; settle, or mark `lost: destination rebooted` with the partial log; retry
    pending log pulls.
 
+## Agent runs (U14)
+
+`rmj agent run -- "<prompt>"` is an ordinary `rmj run` of `claude -p` with an `AgentTask` attached. The router, the
+tenant deny and the local fallback are the run engine's own; a rule `{match: {command: ["claude"]}, image: "rx-claude"}`
+sends it to a box, and `--to` still finds the destination's claude rule for the image. What the engine adds around the
+box run (`AgentSession`, `AgentCredentials`, `AgentBranch`):
+
+1. Credentials: the access token is read from the Keychain item `Claude Code-credentials` and its refresh token is dropped,
+   so a box can neither renew the login nor invalidate the Mac's copy. A token with under 10 minutes left falls back
+   with the reason `claude login expires soon`. The JSON goes over ssh stdin to `rx-run.sh secret` into a fresh
+   directory on tmpfs (`/dev/shm` or `$XDG_RUNTIME_DIR`, mode 0700, created by that call and never reused), is
+   mounted at `/run/rmj`, and a prelude moves it into the container's `/tmp`, which is a `--tmpfs`. `unsecret` runs
+   when the run ends, fails or is cancelled. The token is added to the output redaction list.
+2. Snapshot: before the sync, `AgentBranch.snapshot` records the tree the sync sends (HEAD, uncommitted and untracked files,
+   minus the sync's fixed excludes) in the object store.
+3. Result: the box directory is pulled into a scratch directory (git's own ignore list, no deletes, symlinks that leave
+   the tree and files over 25 MB skipped) and `AgentBranch.record` commits it to `rmj/agent/<job id>`, parented on the HEAD
+   at the start. Trees are built in an empty scratch repository that borrows only the checkout's object store, so the
+   checkout's config, filters, attributes and hooks never run on what the agent returned; the worktree, its index
+   and HEAD are never written. A result that cannot be imported returns exit 4.
+4. `--require-box` turns every fallback (no rule, tailnet down, image missing, login expiring, ledger unavailable)
+   into a failed job with exit 3 and the reason.
+
+Not in v1: an egress allowlist for the container (it uses docker's default network) and separate agent slots; the box
+keeps the raw output in its own log until `prune`, and the lock on the checkout is released before the result is pulled.
+
 ## The GitHub side
 
 `gh auth token` is the credential (the owner's logged-in `gh`); RMJ stores none of its own. Runs

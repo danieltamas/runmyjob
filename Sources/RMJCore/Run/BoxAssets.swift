@@ -15,6 +15,8 @@ enum BoxAssets {
 #   stats  <ulid>                                  the container's cpu and memory now: `<cpu%> <used> / <limit>` per container
 #   cancel <ulid>                                  remove the container by label; stop a waiter that has not started
 #   job    <ulid>                                  print "container <present|absent> <boot_id>" and the records that exist
+#   secret <ulid> <name>                           write stdin to <name> in a private tmpfs directory for the job; prints the directory
+#   unsecret <ulid>                                remove that directory
 #   prune                                          drop records older than 30 days
 set -u
 logs=$HOME/rx/.logs
@@ -86,8 +88,12 @@ waiter() {
   prune
 }
 
+# A job's credentials live on tmpfs only, in a directory the box user alone can enter.
+secret_dir() { printf '%s/rmj-%s' "${XDG_RUNTIME_DIR:-/dev/shm}" "$1"; }
+
 prune() {
   for ext in argv launch log rc meta wait cancelled abort pid; do find "$logs" -name "*.$ext" -mtime +30 -delete 2>/dev/null; done
+  find /dev/shm "${XDG_RUNTIME_DIR:-/dev/shm}" -maxdepth 1 -name 'rmj-*' -mtime +1 -exec rm -rf {} + 2>/dev/null
 }
 
 case "${1:-}" in
@@ -136,6 +142,7 @@ case "${1:-}" in
       kill "$(cat "$logs/$ulid.pid")" 2>/dev/null && printf '137 cancelled\n' > "$logs/$ulid.rc"
     fi
     docker ps -aq --filter "label=rmj.job=$ulid" | xargs -r docker rm -f > /dev/null 2>&1
+    rm -rf "$(secret_dir "$ulid")"
     exit 0 ;;
   job)
     shift; valid_ulid "$1"; ulid=$1
@@ -152,8 +159,18 @@ case "${1:-}" in
     ids=$(docker ps -q --filter "label=rmj.job=$ulid" 2>/dev/null) || exit 1
     [ -n "$ids" ] || exit 0
     docker stats --no-stream --format '{{.CPUPerc}} {{.MemUsage}}' $ids; exit $? ;;
+  secret)
+    shift; valid_ulid "$1"; ulid=$1; name=${2:-}
+    [[ $name =~ ^[A-Za-z0-9._-]{1,64}$ ]] || { echo "rx-run: bad secret name" >&2; exit 2; }
+    dir=$(secret_dir "$ulid")
+    # Memory-backed, and a directory this call created: never one that was there already or a link to somewhere else.
+    case $(stat -f -c %T "$(dirname "$dir")" 2>/dev/null) in tmpfs|ramfs) ;; *) echo "rx-run: the secret directory is not on tmpfs" >&2; exit 1 ;; esac
+    ( umask 077; mkdir "$dir" && [ -O "$dir" ] && [ ! -L "$dir" ] && set -C && cat > "$dir/$name" ) || { rm -rf "$dir"; exit 1; }
+    printf '%s\n' "$dir"; exit 0 ;;
+  unsecret)
+    shift; valid_ulid "$1"; rm -rf "$(secret_dir "$1")"; exit 0 ;;
   prune) prune ;;
-  *) echo "usage: rx-run.sh begin|go|tail|log|cancel|job|stats|prune" >&2; exit 2 ;;
+  *) echo "usage: rx-run.sh begin|go|tail|log|cancel|job|stats|secret|unsecret|prune" >&2; exit 2 ;;
 esac
 """#
 }
