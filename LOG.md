@@ -336,3 +336,13 @@ Optional log streaming, the Run report window, and no Open log button on a queue
 - Agent containers run with `--log-driver none` and are attached by the waiter, so docker never keeps the output: the only
   copy is the redacted one (live: an echoed token-shaped string, none raw anywhere; cancel still removes the container).
 - Verified: 484 tests, `scripts/check.sh` ok.
+
+## 2026-10-30 - release 0.7.0
+
+- New: `rmj agent run` runs Claude Code (or Codex with `--harness codex`) on a box with your Mac's own login. Only a short-lived access token travels, over ssh to the box's memory; the refresh token never leaves the Mac. The result comes back as a git branch `rmj/agent/<job id>`; your checkout is not touched.
+- The agent's container reaches only its vendor's hosts, through a filtering proxy on the box. Each box runs at most two agent runs at once (`agent_slots` per destination, 1 to 16); the others wait for a slot.
+- You can watch the agent work: its messages and every tool call stream into the Run report, the panel log and the archive as they happen. Login tokens are redacted in the box's own log.
+- A run keeps its checkout locked until the Mac has pulled the result, so a queued run can no longer sync over it.
+- A login that would expire before the task's timeout falls back to running on the Mac and says why; a dead token fails fast.
+- Verified: 484 tests, scripts/check.sh green; Codex review rounds in docs/reviews/u14-2026-10-30.md; live on a real box with Claude and Codex, three queued runs, cancel and timeout (exit 124).
+- Not verified: the registry ping and the cask pin for this release (run after publishing).
