@@ -275,3 +275,11 @@ Optional log streaming, the Run report window, and no Open log button on a queue
 - Verified: both new images built locally; `go test` and `pytest` pass inside them as uid 4321; scripts/check.sh green (433 tests); Codex review in docs/reviews/images-python-go-2026-10-30.md.
 - Not verified: Setup building rx-python and rx-go on a real box (ai-eu-1, s1).
 - README rebuilt around where builds run and the self-hosted runners, with new screenshots from the app itself.
+
+## 2026-10-30 - release 0.6.1
+
+- Fix: the tree sync no longer deletes a box's own files (`.rmj-worktree`, `.rmj/exec`) when this Mac's rsync is openrsync, the system one on recent macOS, which ignores the protect rule. With openrsync the sync now skips `--delete-excluded`, so excluded names are left alone on the box. With Homebrew's rsync nothing changes. This was why RMJ's own CI failed on every release commit since 0.2.0; it passes now.
+- Two timing-sensitive tests (the load recorder's first sample, the log sink's bounded finish) no longer fail on a loaded machine; the product code behind them is unchanged.
+- Verified: scripts/check.sh green (433 tests) and RMJ's own GitHub CI green on the fix commit.
+- Not verified: a real box sync from a Mac without Homebrew rsync.
+
