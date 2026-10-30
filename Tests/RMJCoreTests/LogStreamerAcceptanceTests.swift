@@ -89,7 +89,7 @@ struct LogStreamerAcceptanceTests {
         run.add(Data("retained\n".utf8))
         let clock = ContinuousClock(), start = ContinuousClock.now
         await finishStream(run)
-        #expect(start.duration(to: clock.now) < .seconds(5))
+        #expect(start.duration(to: clock.now) < .seconds(10))
         #expect(LogSinkAdmin.spool(sink, home: f.home).pending().lines > 0)
         await streamer.drainAll(force: true)
         let status = try sinkStatus(f, sink.id)

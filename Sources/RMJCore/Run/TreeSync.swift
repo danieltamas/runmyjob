@@ -39,8 +39,12 @@ public enum TreeSync {
         guard ignored.status == 0, ignored.stdout.count < ProcessRunner.collectedLimit else { throw Failure.gitFailed }
         guard FileManager.default.createFile(atPath: list.path, contents: exclusions(from: ignored.stdout),
                                              attributes: [.posixPermissions: 0o600]) else { throw CocoaError(.fileWriteUnknown) }
-        var arguments = ["-az", "--delete", "--delete-excluded", "--safe-links", "--from0"]
-        arguments += protected.flatMap { ["--filter", "P \($0)"] }
+        // openrsync (the system rsync on recent macOS) ignores protect rules, so with --delete-excluded it would delete the
+        // box's own files; without it, excluded names are simply left alone on the box.
+        let version = try? await runner.run(rsync, ["--version"], timeout: .seconds(10))
+        let honorsProtect = !(version.map { String(decoding: $0.stdout, as: UTF8.self).contains("openrsync") } ?? true)
+        var arguments = ["-az", "--delete", "--safe-links", "--from0"]
+        if honorsProtect { arguments += ["--delete-excluded"] + protected.flatMap { ["--filter", "P \($0)"] } }
         arguments += ["--exclude-from=\(list.path)"] + fixedExcludes.flatMap { ["--exclude", $0] }
         if let shell { arguments += ["-e", shell] }
         arguments += [worktree.path + "/", destination]

@@ -136,7 +136,7 @@ struct RunLoadAcceptanceTests {
 
         let child = Process()
         child.executableURL = URL(fileURLWithPath: "/bin/sleep")
-        child.arguments = ["3"]
+        child.arguments = ["8"]
         try child.run()
         defer {
             if child.isRunning { child.terminate() }
@@ -144,7 +144,7 @@ struct RunLoadAcceptanceTests {
         }
         let recorder = LoadRecorder()
         await recorder.start(every: .milliseconds(100))
-        try await Task.sleep(for: .milliseconds(1500))
+        try await Task.sleep(for: .seconds(5))
         let load = try #require(await recorder.stop())
         #expect(load.memoryBytes > 0)
     }
