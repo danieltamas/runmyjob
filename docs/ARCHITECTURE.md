@@ -6,8 +6,9 @@
 Package.swift            swift-tools-version 6.0, macOS 14 deployment target, no dependencies
 Sources/RMJCore/         everything testable; imports Foundation, Darwin, Security (Keychain),
                          SQLite3; never SwiftUI or AppKit
-  Net/                   TailnetState (tailscale status --json), DestinationProbe, SSH (argv builder,
-                         fixed options, address verification), Rsync
+  Net/                   TailnetState (tailscale status --json), DestinationProbe, BoxSensors (the probe's
+                         counters and SensorRates), SSH (argv builder, fixed options, address
+                         verification), Rsync
   Routing/               RulesFile (Codable JSON, strict validation, atomic save), Router, Explain,
                          Tenants, RepoIdentity, Capacity
   Run/                   RunEngine (rmj run), Sync (locked), BoxRun (rx-run.sh contract: argv,
@@ -21,15 +22,22 @@ Sources/RMJCore/         everything testable; imports Foundation, Darwin, Securi
   Store/                 Database (SQLite actor), Schema + migrations, Retention, Queries, LogPull
   Hooks/                 Guard (the remote-build guard port), Installers (ClaudeCode, Codex, OpenCode,
                          Hermes), Shims
-  Agent/                 MCPServer (JSON-RPC over stdio), Tools, Redaction (escapes, invisible Unicode)
-  Release/               RMJRelease (standing, canUpdate), ReleaseCheck
+  Agent/                 MCPServer (JSON-RPC over stdio), MCPTools, AgentJob/AgentCLI/AgentAccess (agent runs,
+                         U14), Redaction (escapes, invisible Unicode)
+  Panel/                 what the app draws, as plain values the tests can read: PanelLoader and PanelSnapshot,
+                         JobRowPresentation and filter, DestinationCardPresentation, SensorChips, RoutingPresentation,
+                         RunReport and LogDocument, DemoShots (the fixtures behind --render-screenshots)
+  Sinks/                 log streaming: config, spool, shipper, drainer, formats (see Log streaming)
+  Notifications/         NotificationPlanner and settings (which events notify, once)
+  Releases/              ReleaseFeed and UpdateChecker (standing, can update)
   Ops/BuildEnvironments  the shipped toolchain images (rx-rust, rx-node, rx-python, rx-go) and the programs each must hold
   GitHub/RepoStar        the footer's star offer: asks `gh` once, remembers a star in config.json
   Support/               ProcessRunner, Executables, RMJHome, Clock, SafeFile, Keychain
-Sources/RMJ/             SwiftUI app: RMJApp, AppStore, PanelView, JobsTab, DestinationsTab,
-                         RoutingTab, HistoryTab, SettingsView + panes, MenuBarIcon, Theme, Looks,
-                         Components, Updater, UpdateInstaller (runs the bundled install.sh), StarOffer,
-                         LoginItem, Notifier, DemoShots
+Sources/RMJ/             SwiftUI app: RMJApp, PanelModel (polls, holds the state the views read), PanelView,
+                         JobsTab and JobExpansion, DestinationsTab and SensorViews, RoutingTab and RuleEditor,
+                         ReportWindow, SettingsView + panes, Theme, Looks, Components, Collapsible (the one
+                         open/close motion), UpdateInstaller (runs the bundled install.sh), StarOffer,
+                         LoginItem, AlertCenter, ScreenshotRender
 Sources/RMJCLI/          `rmj` (installed name): run, route, jobs, job, log, failures, destinations,
                          runners, rerun, hooks, guard, prune, mcp
 Tests/RMJCoreTests/      <Topic>AcceptanceTests (Codex), <Topic>RegressionTests, Fixtures/
@@ -43,6 +51,16 @@ scripts/                 check.sh, bundle.sh, install-from-source.sh, release.sh
                          make-signing-identity.sh, perf.sh, acceptance.sh
 install.sh               the one-line installer, also bundled in the app for Update
 ```
+
+## What "rx" means here
+
+`rx` was the predecessor script in `~/agent-os`; RMJ replaced it and nothing of it runs any more. `~/.local/bin/rx`
+is only a forwarder to `rmj run` / `rmj jobs` / `rmj log` for stale callers (`rx facts` and `rx hosts` become
+`rmj route -- true`, which reports where a command would run and runs nothing). The name survives inside RMJ as the
+box-side convention, kept so boxes already set up keep working: `Support/box/rx-run.sh` (shipped to the box, starts the
+container and holds the waiter), the images `rx-rust`, `rx-node`, `rx-claude`..., the `<home>/rx/` folder a run leaves
+its files in, and the destination role `"rx"` (takes jobs). The Mac side is RMJ alone: RunEngine, BoxRun, Reconcile.
+The contract is in docs/ROUTING.md, "The rx contract".
 
 ## Data flow
 
