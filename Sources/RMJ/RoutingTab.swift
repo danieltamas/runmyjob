@@ -150,14 +150,17 @@ struct RoutingTab: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Image(systemName: "pencil").font(.system(size: 10)).foregroundStyle(Theme.textTertiary)
                 }
-                HStack(spacing: 5) {
+                // A long chain wraps onto the next line instead of widening the panel.
+                FlowLayout(spacing: 5) {
                     ForEach(Array(rule.chain.enumerated()), id: \.offset) { position, item in
-                        if position > 0 { Image(systemName: "arrow.right").font(.system(size: 8, weight: .bold)).foregroundStyle(Theme.textTertiary) }
-                        Chip(text: item.name, color: item.isLocal ? Theme.local : Theme.textPrimary)
+                        HStack(spacing: 5) {
+                            if position > 0 { Image(systemName: "arrow.right").font(.system(size: 8, weight: .bold)).foregroundStyle(Theme.textTertiary) }
+                            Chip(text: item.name, color: item.isLocal ? Theme.local : Theme.textPrimary)
+                        }
                     }
                     if let environment = rule.environment { Chip(text: environment, color: Theme.textSecondary, style: .outline) }
-                    Spacer(minLength: 0)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 22)
                 Text(rule.match).font(.meta).foregroundStyle(Theme.textTertiary).fixedSize(horizontal: false, vertical: true).padding(.leading, 22)
             }

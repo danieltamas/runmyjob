@@ -215,7 +215,7 @@ public enum DemoShots {
           "advisory": "the box builds x86_64 Linux binaries; a binary for this Mac is built here" },
         { "name": "cargo repos to the rust image",
           "match": { "tenant": ["acme", "personal"], "command": ["cargo", "just"], "has": "Cargo.toml" },
-          "to": ["ai-eu-1"], "image": "rx-rust",
+          "to": ["ai-eu-1", "host-2-gamerina", "host-gamerina"], "image": "rx-rust",
           "volumes": ["rx-cargo-registry:/usr/local/cargo/registry", "rx-cargo-git:/usr/local/cargo/git",
                       "rx-rustup:/usr/local/rustup", "rx-target-{repo}:/work/target"],
           "cold_marker": { "acme/atlas": "Compiling libduckdb-sys" } },
