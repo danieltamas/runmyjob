@@ -362,3 +362,9 @@ Optional log streaming, the Run report window, and no Open log button on a queue
 - Fixed in review: interface names such as `tailscale0` shifted the network counters; container traffic was counted twice (virtual interfaces are now left out).
 - Verified: 503 tests, scripts/check.sh ok; Codex review in docs/reviews/u15-2026-10-31.md; probe steps run live on a WSL box.
 - Not verified: the idle CPU budget on the owner's live app (0.44% and 0.54% against 0.4% in the 0.7.0 runs, panel open and other agents running); a clean 600 s run with the panel closed is still to do.
+
+## 2026-10-31 - release 0.8.1
+
+- Job and destination cards open and close in one smooth motion. Opening no longer waits two updates to measure the content before moving, and closing no longer pops the action buttons in or leaves a gap behind: the buttons, the spacing and the divider fold with the card. Collapsed job cards are 8 pt shorter (the dead space under the last row is gone).
+- Verified: 503 tests, scripts/check.sh ok.
+- Not verified: the motion was judged by the owner on the live app for open; the final close change is not yet seen live. The idle CPU budget stays unproven (see 0.8.0).

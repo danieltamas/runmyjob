@@ -106,13 +106,15 @@ struct JobRowView: View {
 
     var body: some View {
         HoverCard(accent: Theme.color(row.stateChip.tone), action: toggle) {
-            VStack(alignment: .leading, spacing: 8) {
+            // No stack spacing: the gaps belong to the rows and to what folds, so a folded part leaves no gap behind.
+            VStack(alignment: .leading, spacing: 0) {
                 titleLine
-                contextLine
-                commandWell
-                footer
-                if !row.actions.isEmpty, !expanded { actions }
-                Collapsible(open: expanded) { JobExpansion(row: row, model: model).padding(.top, 2) }
+                contextLine.padding(.top, 8)
+                commandWell.padding(.top, 8)
+                footer.padding(.top, 8)
+                // The buttons fold away as the expansion unfolds (it carries them too), and back, in one motion.
+                if !row.actions.isEmpty { Collapsible(open: !expanded, lazy: false) { actions.padding(.top, 8) } }
+                Collapsible(open: expanded) { JobExpansion(row: row, model: model).padding(.top, 10) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
