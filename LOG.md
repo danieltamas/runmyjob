@@ -368,3 +368,32 @@ Optional log streaming, the Run report window, and no Open log button on a queue
 - Job and destination cards open and close in one smooth motion. Opening no longer waits two updates to measure the content before moving, and closing no longer pops the action buttons in or leaves a gap behind: the buttons, the spacing and the divider fold with the card. Collapsed job cards are 8 pt shorter (the dead space under the last row is gone).
 - Verified: 503 tests, scripts/check.sh ok.
 - Not verified: the motion was judged by the owner on the live app for open; the final close change is not yet seen live. The idle CPU budget stays unproven (see 0.8.0).
+
+## 2026-10-31 - Keychain through /usr/bin/security
+
+- Every Keychain read and write now goes through `/usr/bin/security`, so an update of RMJ never asks for access again (the six prompts after re-saving two PATs came from the per-binary trust of an ad hoc signed build). `Keychain.swift` rewritten; public API unchanged; calls without prompts are killed after 5 s and read as denied.
+- Verified: `scripts/check.sh` ok, 519 tests, including 10 acceptance tests on a fake `security` (argv, exit codes, no secret in errors, timeout kills the child). Codex review: no actionable findings (docs/reviews/keychain-security-tool-2026-10-31.md).
+- Not verified: the real Keychain with the new build. Items written by older builds prompt one last time; re-save the PATs once in this build, update again, and expect no prompt.
+
+## 2026-10-31 - stuck jobs and runner labels
+
+- A GitHub job could stay `running` in the panel for a day after GitHub had finished it. A poll that saw the run completed while GitHub's job list still said in_progress wrote its "done" marker, and later polls skipped the run. The marker now waits until every job has settled and never hides a row that is still unfinished, so rows stuck like this settle on the next poll.
+- New `runner_labels` on a destination (`{"danieltamas/lexito.ro": ["lexito"]}`): extra labels for a target's runner, because the derived one (`lexito-ro`) did not match a workflow asking for `lexito`; those jobs queued with "0 online". Validated in rules.json, applied by the next deploy.
+- Verified: new acceptance tests (stale jobs fail on the old poller, pass now; labels). Not verified: the queued lexito jobs running on the box after the deploy.
+
+## 2026-10-31 - burst runners (autoscale)
+
+- Jobs no longer wait behind a fixed runner count. While the app runs, a GitHub job queued 20 s with no idle runner starts a one-shot burst runner on the serving box with the lowest measured load (cap 3 per box, 8 GiB each, load ceiling 0.9); idle ones are removed after 60 s, unregistered ones after 180 s. Adding a box to a target's `runner_targets` adds capacity with nothing else to maintain. Tenants never mix: only boxes that list the target are used.
+- Burst runners are `burst-<slug>-<6hex>` containers labelled `rmj.burst`, registered with the target's labels; the PAT travels only as ssh stdin. Actions are in `~/.rmj/logs/scaler.log`, the last one in the footer.
+- Verified: 18 acceptance tests (planner, burst commands, round), full suite 548 passed. Not verified: a live burst start on ai-gamerina-eu (network name `gh-runners_ci`, registration with labels).
+
+## 2026-10-31 - release 0.9.0
+
+- Boxes can no longer reach your Mac through ssh: RMJ's connections now refuse agent, X11 and port forwarding even when `~/.ssh/config` enables `ForwardAgent` for that host. A compromised box could otherwise have used your agent while a connection stayed open (up to 10 minutes).
+- New boxes are added entirely from the app: the wizard trusts the box's ssh host key itself (shows the fingerprint, refuses a changed key), creates the tenant, creates the home folder, checks every runner target's PAT before adding, and removes the destination again when setup fails. Nothing is edited by hand in `rules.json`.
+- Agents' Node commands route like cargo: `npm`, `pnpm`, `yarn` and `bun` test, lint, typecheck and check go through `rmj run` in a classified repo (Claude Code hook and the shims for the other agents). Builds stay local.
+- Destination cards: the tenant pill carries the state (no side bar, no status chip), cards are tinted per tenant, a long state no longer pushes the box name out, and a new Disk health tile shows SMART (where `smartctl` runs without sudo), a read-only mount, kernel I/O errors and inode use.
+- Settings > Destinations lists what RMJ puts on a box (runner and burst containers, build images, files) and how to use your own image.
+- New `~/.rmj/runner-extras/<destination>/`: a box's own compose services and Dockerfiles (toolchain image, Postgres and Redis sidecars) are deployed with the stack and kept across deploys. Found the hard way on ai-gamerina-eu: RMJ's bare `gh-runner:2.338.2` replaced the fleet image carrying lexito's toolchain, and the stack sync and orphan removal deleted its sidecars and the musclery runner. Use a distinct image tag per toolchain.
+- Autoscale (burst runners), runner labels, the stale-job fix and the Keychain rewrite above ship in this release.
+- Verified: 575 tests, scripts/check.sh ok; Node routing checked with `rmj guard` in a classified repo; lexito runner and sidecars redeployed on ai-gamerina-eu and registered. Not verified: the Disk health tile on a live card, a live burst start, the box going down during the first deploy (cause unknown).
