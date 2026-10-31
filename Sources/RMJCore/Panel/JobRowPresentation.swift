@@ -179,6 +179,7 @@ public struct JobRowPresentation: Sendable, Equatable {
 
     static func meta(_ job: JobRecord, info: GitHubJobInfo?, now: Date, lastOutputAt: Date?, waitingFor: String?) -> [Part] {
         func part(_ text: String, _ tone: Tone = .plain) -> Part { Part(text: text, tone: tone) }
+        func ranOn(_ info: GitHubJobInfo?) -> String? { info.flatMap { $0.destination ?? $0.runnerName } }
         func lastOutput() -> Part? {
             guard let lastOutputAt else { return nil }
             let age = now.timeIntervalSince(lastOutputAt)
@@ -190,6 +191,7 @@ public struct JobRowPresentation: Sendable, Equatable {
         case .running:
             let elapsed = part(PanelFormat.duration(now.timeIntervalSince(job.startedAt ?? job.queuedAt)), .running)
             var parts = [elapsed]
+            if let ran = ranOn(info) { parts.append(part(ran)) }
             if let info, let step = info.currentStep {
                 let number = info.currentStepNumber ?? info.stepsDone + 1
                 parts.append(part("step \(number)/\(info.stepsTotal) \(step)"))
@@ -203,12 +205,14 @@ public struct JobRowPresentation: Sendable, Equatable {
         case .done:
             var parts: [Part] = []
             if let (seconds, provenance) = duration(job, info: info) { parts.append(part("\(PanelFormat.duration(seconds)), \(provenance)", .ok)) }
+            if let ran = ranOn(info) { parts.append(part(ran)) }
             if job.warmth != "unknown" { parts.append(part(job.warmth)) }
             parts += averages(job)
             return parts
         case .failed, .lost, .cancelled:
             var parts = [part(outcome(job), .crit)]
             if let (seconds, provenance) = duration(job, info: info) { parts.append(part("\(PanelFormat.duration(seconds)), \(provenance)")) }
+            if let ran = ranOn(info) { parts.append(part(ran)) }
             parts += averages(job)
             if let reason = job.fallbackReason { parts.append(part("local: \(reason)", .local)) }
             if job.environment == "mac" { parts.append(part("environment: mac", .local)) }

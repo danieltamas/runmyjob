@@ -51,7 +51,8 @@ public struct RunReport: Sendable, Equatable {
         let running = job.endedAt == nil && job.startedAt != nil
         let groups: [(String, [Fact?])] = [
             ("Result", [fact("Status", job.state.rawValue, stateTone), exit("Exit code", job.exitCode), exit("Box exit", job.boxExit)]),
-            ("Where", [fact("Location", job.destination ?? job.location), fact("Environment", job.environment), fact("Rule", job.rule),
+            ("Where", [fact("Location", job.destination ?? job.location), fact("Runner", GitHubJobInfo.decode(job.github)?.runnerName),
+                       fact("Environment", job.environment), fact("Rule", job.rule),
                        fact("Fallback", job.fallbackReason, .warn), fact("Tenant", job.tenant), fact("Repo", job.repo),
                        fact("Worktree", job.worktree), fact("Branch", job.branch),
                        fact("Commit", job.commit.map { job.dirty ? "\($0) (dirty)" : $0 }), fact("Agent", job.agent), fact("Session", job.session)]),

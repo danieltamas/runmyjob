@@ -117,7 +117,7 @@ public struct DestinationCardPresentation: Sendable, Equatable {
         sensorDetails = shown ? SensorChips.details(input.probe) : []
         systemKind = shown ? input.probe?.sensors.flatMap { SensorChips.kindLabel($0.kind) } : nil
         rxContainers = input.rxJobs.filter { $0.state == .running || $0.state == .syncing }.map(\.id)
-        runners = input.runners.map { Self.runnerLine($0, latest: input.latestRunner) }
+        runners = input.runners.map { Self.runnerLine($0, latest: input.latestRunner, online: online) }
         images = input.images.map { Line(label: $0, value: "", tone: .plain, stale: nil) }
         otherImages = input.otherImages
         missingTools = input.probe?.missingTools ?? []
@@ -190,7 +190,7 @@ public struct DestinationCardPresentation: Sendable, Equatable {
         return value >= 10 ? "\(Int(value.rounded())) GB" : String(format: "%.1f GB", value)
     }
 
-    static func runnerLine(_ runner: DestinationCardInput.Runner, latest: (version: String, servedUntil: String?)?) -> RunnerLine {
+    static func runnerLine(_ runner: DestinationCardInput.Runner, latest: (version: String, servedUntil: String?)?, online: Bool = true) -> RunnerLine {
         let version = runner.container.version ?? "unknown"
         var detail = "version \(version)"
         if let latest, latest.version != version {
@@ -199,6 +199,10 @@ public struct DestinationCardPresentation: Sendable, Equatable {
         if let job = runner.job { detail += ", job \(job)" }
         let usage = [runner.cpu, runner.memory].compactMap { $0 }.joined(separator: " ")
         if !usage.isEmpty { detail += ", \(usage)" }
+        // A box that is not answering says nothing about its runners: what the last probe saw is not "online".
+        guard online else {
+            return RunnerLine(name: runner.container.name, version: version, detail: detail, state: "unknown, box offline", tone: .unknown)
+        }
         let failed = runner.readiness != "registered"
         let state = failed ? runner.readiness : runner.busy ? "busy" : runner.container.isRunning ? "online" : runner.container.state
         let tone: JobRowPresentation.Tone = failed ? .crit : runner.busy ? .running : runner.container.isRunning ? .ok : .unknown

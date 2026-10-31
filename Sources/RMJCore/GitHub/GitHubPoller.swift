@@ -296,6 +296,11 @@ public actor GitHubPoller {
             ? known.filter { $0.value.info.runId == run.id && $0.value.info.runAttempt == job.runAttempt - 1 && $0.value.info.name == GitHubText.clean(job.name) }.map(\.key) : []
         var info = GitHubMapping.info(repo: repo, run: run, job: job, observation: observation, parent: previous.count == 1 ? previous.first : nil)
         info.destination = job.runnerName.flatMap { name in registrations.first { $0.name == GitHubText.clean(name) }?.destination }
+        // An ephemeral runner is gone from GitHub once its job ends: the name recorded while it was registered still says where it ran.
+        if info.destination == nil, let name = job.runnerName {
+            let rows = try await ledger.database.query("SELECT destination FROM runner_registration WHERE runner = ? LIMIT 2", [.text(GitHubText.clean(name))])
+            if rows.count == 1 { info.destination = rows[0]["destination"]?.textValue }
+        }
         info.waitingOnDependency = info.waitingOnDependency || GitHubMapping.waitsOnDependency(job, siblings: siblings)
         let state = GitHubMapping.state(status: job.status, conclusion: job.conclusion)
         var patch = JobPatch()
