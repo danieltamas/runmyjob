@@ -6,6 +6,9 @@ public actor AppBackground {
     public private(set) var githubPolledAt: Date?
     public private(set) var boxesPolledAt: Date?
     public private(set) var footerNote: String?
+    /// The autoscaler's last action, for the footer.
+    public private(set) var scalingNote: String?
+    private var scalingRunning = false
 
     private let home: RMJHome
     private let environment: [String: String]
@@ -28,6 +31,7 @@ public actor AppBackground {
         var reconciledAt = Date.distantPast
         var archivedAt = Date.distantPast
         var tokens: (@Sendable (String) -> String?)?
+        let scaling = RunnerScalingLoop(home: home, environment: environment)
         while !Task.isCancelled {
             refreshStreamer()
             let store = RulesStore(home: home)
@@ -51,6 +55,17 @@ public actor AppBackground {
                         await archiveFailedLogs(ledger: context.ledger, archive: context.archive, tokens: tokens ?? { _ in nil })
                     }
                     footerNote = await poller.rateLimitedUntil() != nil ? await poller.footer() : nil
+                }
+                // Off the loop: a stalled ssh to a box must not hold up polling, reconciling or log draining.
+                if !scalingRunning {
+                    scalingRunning = true
+                    let ledger = context.ledger
+                    let environment = environment
+                    Task {
+                        await scaling.tick(rules: rules, ledger: ledger, tailnet: { await TailnetState.read(environment: environment) })
+                        self.scalingNote = await scaling.note
+                        self.scalingRunning = false
+                    }
                 }
                 let live = ((try? await context.ledger.jobs()) ?? []).contains { !$0.state.isSettled && $0.github == nil }
                 if Date().timeIntervalSince(reconciledAt) >= (live ? 20 : 120) {

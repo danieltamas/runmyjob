@@ -20,17 +20,20 @@ struct DestinationWizard: View {
     @State private var running = false
     @State private var setup: String?
     @State private var problem: String?
+    /// The box's ssh key, offered for the owner to confirm when this Mac has never connected to it.
+    @State private var offered: HostKey?
 
     private var targetList: [String] { targets.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }
 
     var body: some View {
         if let setup {
-            SetupRunView(name: setup, tokens: [:], done: done)
+            SetupRunView(name: setup, tokens: [:], discardOnFailure: true, createdTenant: tenants.contains(tenant) ? nil : tenant, done: done)
         } else {
             ModalFrame(title: "Add \(row.host)", detail: "RMJ checks the box, then sets it up. Nothing is installed on it beyond containers.", content: {
-                form
+                // The result comes first: the form is tall and the scroll view does not follow what was added below it.
                 if let problem { ProblemText(text: problem) }
-                if let report { steps(report) }
+                if let offered { trustCard(offered) } else if let report { steps(report) }
+                form
             }, footer: ModalFooter(
                 secondary: .init(title: "Cancel", run: done),
                 primary: .init(title: running ? "Checking..." : "Check and add", disabled: running || name.isEmpty || tenant.isEmpty || home.isEmpty) { Task { await add() } }))
@@ -43,6 +46,13 @@ struct DestinationWizard: View {
             field("Name", "How rules refer to it", $name)
             field("ssh alias", "`ssh <alias>` must work from this Mac without a prompt", $alias)
             field("Tenant", tenants.isEmpty ? "A tenant of your rules file" : tenants.joined(separator: ", "), $tenant)
+            // Pick an existing company, or type a new name: adding the box creates it.
+            HStack(spacing: 6) {
+                ForEach(tenants, id: \.self) { name in
+                    Button { tenant = name } label: { Chip(text: name, color: tenant == name ? Theme.teal : Theme.textSecondary, style: tenant == name ? .filled : .outline) }
+                        .buttonStyle(.plain)
+                }
+            }
             field("Home on the box", "Where RMJ keeps its files there", $home)
             SwitchRow(title: "Runs rx jobs (builds, tests)", isOn: $rx)
             SwitchRow(title: "Hosts GitHub runners", isOn: $runners)
@@ -70,6 +80,36 @@ struct DestinationWizard: View {
         }
     }
 
+    private func trustCard(_ key: HostKey) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("RMJ does not know \(alias)'s ssh key yet.").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.textPrimary)
+            Text("No entry in your known_hosts matches it. Its key (\(key.type)) has the fingerprint below; confirm it is your box and RMJ stores it once.")
+                .font(.meta).foregroundStyle(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+            Text(key.fingerprint).font(.system(size: 12, design: .monospaced)).foregroundStyle(Theme.textPrimary).textSelection(.enabled)
+            HStack {
+                ActionButton(title: "Trust this key and continue", style: .primary, disabled: running) { Task { await trust(key) } }
+                ActionButton(title: "Not now", disabled: running) { offered = nil }
+            }
+        }
+    }
+
+    private func trust(_ key: HostKey) async {
+        do { try HostKeyTrust().trust(key, alias: alias) } catch { return problem = "\(error)" }
+        offered = nil
+        await add()
+    }
+
+    /// An unknown key is not an error to fix by hand: the box's key is read from its verified tailnet address and offered.
+    private func offerKey(for report: OnboardingReport, tailnet: TailnetState) async {
+        guard let failed = report.failedStep, failed.name == "ssh", HostKeyTrust.isUnknownKey(failed.detail),
+              case .online(let address) = DestinationResolver.resolve(DestinationTarget(alias: alias, peerID: row.peerID), in: tailnet) else { return }
+        do {
+            let key = try await HostKeyTrust().scan(address: address)
+            if await HostKeyTrust().adoptKnown(key, alias: alias, address: address) { return await add() }
+            offered = key
+        } catch { problem = "\(error)" }
+    }
+
     private func add() async {
         running = true
         problem = nil
@@ -82,9 +122,19 @@ struct DestinationWizard: View {
         var draft = DestinationDraft(name: name, peerID: row.peerID, sshAlias: alias, tenant: tenant, roles: roles, home: home,
                                      maxJobs: jobs, memoryBudget: memoryBudget)
         draft.runnerTargets = runners ? targetList : []
-        let result = await DestinationOnboarding(probes: LiveProbeProvider(), store: RulesStore(home: RMJHome())).run(draft, tailnet: await TailnetState.read())
+        // A name GitHub does not know, or one the PAT cannot manage, is caught here, before anything is written or installed.
+        let stored = DestinationOps.tokens(draft.runnerTargets, home: RMJHome())
+        for target in draft.runnerTargets {
+            let entered = (tokens[target] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let token = entered.isEmpty ? stored[target] : entered else { continue }
+            do { _ = try await GitHubRunners.list(api: GHCLI(), target: target, token: token) } catch {
+                return problem = "\(target): \((error as? GitHubRunners.Failure)?.message ?? "\(error)")"
+            }
+        }
+        let tailnet = await TailnetState.read()
+        let result = await DestinationOnboarding(probes: LiveProbeProvider(), store: RulesStore(home: RMJHome())).run(draft, tailnet: tailnet)
         report = result
-        guard result.written else { return }
+        guard result.written else { return await offerKey(for: result, tailnet: tailnet) }
         // Tokens are stored only for a destination that passed its checks.
         for target in draft.runnerTargets {
             let token = (tokens[target] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -101,7 +151,11 @@ struct DestinationWizard: View {
 struct SetupRunView: View {
     let name: String
     let tokens: [String: String]
+    /// Set by the Add dialog: a setup that fails takes the new destination (and the tenant the add created) out of the rules again.
+    var discardOnFailure = false
+    var createdTenant: String?
     let done: () -> Void
+    @State private var discarded = false
     @State private var report: DestinationSetup.Report?
     @State private var working = true
     @State private var notice = ""
@@ -120,7 +174,7 @@ struct SetupRunView: View {
                     StatusLine(text: "\(step.outcome.rawValue)  \(step.name): \(step.detail)",
                                tone: step.outcome == .failed ? .failed : step.outcome == .changed ? .changed : .plain, hint: step.hint)
                 }
-                Text(report.isReady ? (report.changed ? "Ready. Changed what was missing." : "Ready. Nothing needed changing.") : "Not ready. Fix the failed step and run it again.")
+                Text(report.isReady ? (report.changed ? "Ready. Changed what was missing." : "Ready. Nothing needed changing.") : (discarded ? "Not ready, so \(name) was not added. Fix the failed step and add it again." : "Not ready. Fix the failed step and run it again."))
                     .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(report.isReady ? Theme.ok : Theme.crit)
             }
         }, footer: footer)
@@ -197,6 +251,7 @@ struct SetupRunView: View {
         let state = await TailnetState.read()
         guard case .online(let address) = DestinationResolver.resolve(DestinationTarget(alias: config.sshAlias, peerID: config.peerID), in: state) else {
             report = DestinationSetup.Report(steps: [DestinationSetup.Step(name: "reachability", outcome: .failed, detail: "\(name) is not online on the tailnet", hint: "Start the machine or Tailscale on it")])
+            if discardOnFailure { discard() }
             return
         }
         let home = RMJHome()
@@ -210,6 +265,19 @@ struct SetupRunView: View {
             tokens: found,
             registrations: registrations,
             notice: { text in Task { @MainActor in notice = text } })
-        report = await setup.run()
+        let result = await setup.run()
+        report = result
+        if discardOnFailure, !result.isReady { discard() }
+    }
+
+    /// A box that was just added and could not be set up is not a destination: out of the rules file again, with a tenant the add created.
+    private func discard() {
+        let store = RulesStore(home: RMJHome())
+        guard case .valid(var rules, let fingerprint) = store.load() else { return }
+        let tenant = rules.destinations[name]?.tenant
+        rules.destinations[name] = nil
+        if let tenant, tenant == createdTenant, !rules.destinations.values.contains(where: { $0.tenant == tenant }),
+           !rules.rules.contains(where: { $0.match.tenant?.contains(tenant) == true }) { rules.tenants[tenant] = nil }
+        if (try? store.save(rules, expected: fingerprint)) != nil { discarded = true }
     }
 }

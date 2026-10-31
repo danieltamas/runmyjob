@@ -125,7 +125,15 @@ public struct DestinationProbe: Sendable {
         ("mem", "awk '/^MemAvailable:/ {print int($2/1024)}' /proc/meminfo"),
         ("memtotal", "awk '/^MemTotal:/ {print int($2/1024)}' /proc/meminfo"),
         ("disk", "df -Pm \"$HOME\" | awk 'NR==2 {print $2, $4}'"),
-        ("osname", "sed -n 's/^PRETTY_NAME=//p' /etc/os-release | tr -d '\"'"),
+        // What a non-root user can tell about the disk's health: a read-only mount, inode use, kernel I/O errors (only when dmesg
+        // is readable, so an unreadable log is never read as "none"), and SMART where smartctl may be run by this user (never sudo).
+        ("diskhealth", "o=$(findmnt -no OPTIONS -T \"$HOME\" 2>/dev/null) && { case \",$o,\" in *,ro,*) echo ro 1;; *) echo ro 0;; esac; }; "
+            + "df -Pi \"$HOME\" | awk 'NR==2 {gsub(\"%\", \"\", $5); print \"inodes\", $5}'; "
+            + "m=$(dmesg 2>/dev/null) && [ -n \"$m\" ] && echo \"ioerr $(printf '%s\\n' \"$m\" | grep -ciE 'i/o error|ext4-fs error|xfs.*(corrupt|error)|btrfs.*error|blk_update_request|nvme.*(timeout|reset)')\"; "
+            + "if command -v smartctl >/dev/null 2>&1; then for d in $(lsblk -dno NAME,TYPE 2>/dev/null | awk '$2==\"disk\" {print \"/dev/\" $1}'); do "
+            + "r=$(smartctl -H \"$d\" 2>/dev/null | grep -iE 'overall-health|SMART Health Status'); "
+            + "case \"$r\" in *FAILED*) echo smart failed;; *PASSED*|*OK*) echo smart passed;; esac; done; fi; true"),
+        ("osname","sed -n 's/^PRETTY_NAME=//p' /etc/os-release | tr -d '\"'"),
         ("load", "cut -d' ' -f1 /proc/loadavg"),
         ("boot", "cat /proc/sys/kernel/random/boot_id"),
         ("uptime", "cut -d' ' -f1 /proc/uptime"),

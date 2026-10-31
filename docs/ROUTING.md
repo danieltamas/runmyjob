@@ -53,6 +53,7 @@ The file is strict JSON (no comments; D8). The shipped default:
 | `memory_budget` | rx limits plus what the runners use now must stay under it (a 52 GB box that also runs ollama on the GPU). Runner caps are not summed: on `ai-eu-1` they add up to 32 g, which would leave no room under a 36 g budget |
 | `rx_defaults` | Container limits for rules that set none |
 | `runner_stack`, `runner_targets` | Where the vendored compose stack lives and which repos or orgs its runners register for |
+| `runner_labels` | Extra runner labels per target, `{"owner/repo": ["lexito"]}`, for a workflow whose `runs-on` names a label the target's name does not give; each key must be one of `runner_targets` |
 | `requires` | Programs every image used on this destination must contain, e.g. `["jq", "unzip"]`, on top of what each shipped image already guarantees (`BuildEnvironments`: bash, zsh, git and its own toolchain). Jobs run in containers, so this is checked by running the image, never on the box: Setup fails with `missing in rx-rust: zsh` and a hint to add it to the image's Dockerfile, and the probe shows the same on the destination card. Names are letters, digits and `._+-`, no duplicates |
 
 Known today: `ai-eu-1` is a WSL2 VM (24 CPUs, 52 GB) that also runs ollama on the GPU; it

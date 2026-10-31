@@ -25,7 +25,9 @@ public enum SSH {
                 "-o", "ProxyJump=none", "-o", "ControlMaster=auto", "-o", "ControlPath=\(try controlDirectory())/%C", "-o", "ControlPersist=10m",
                 "-o", "BatchMode=yes",
                 "-o", "ConnectTimeout=5", "-o", "RequestTTY=no", "-o", "StrictHostKeyChecking=yes",
-                "-o", "ServerAliveInterval=15"]
+                "-o", "ServerAliveInterval=15",
+                // A box is never trusted with this Mac: no agent, X11 or port forwards, whatever ~/.ssh/config says for the alias.
+                "-o", "ForwardAgent=no", "-o", "ForwardX11=no", "-o", "ClearAllForwardings=yes"]
     }
 
     /// RMJ's own multiplexing sockets, in a directory only this user can enter: one authentication serves

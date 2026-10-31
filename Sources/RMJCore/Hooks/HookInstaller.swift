@@ -52,7 +52,7 @@ public struct HookInstaller: Sendable {
         }
     }
 
-    public static let shimmed = ["cargo", "just"]
+    public static let shimmed = ["cargo", "just", "npm", "pnpm", "yarn", "bun"]
     /// The marker that makes an entry RMJ's: the command ends with it.
     static let marker = " guard --hook"
 

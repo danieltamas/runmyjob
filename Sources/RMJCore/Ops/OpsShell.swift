@@ -29,6 +29,11 @@ public struct SSHOpsShell: OpsShell {
         guard remote.hasPrefix("/"), remote.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "/_.-".contains($0)) }), !remote.contains("..") else {
             throw TreeSync.Failure.rsyncFailed(2, "unsafe remote path")
         }
+        // rsync creates only the last path component: a new box has no `<home>/infra` yet.
+        let made = try await run("mkdir -p \(SSH.quote(remote))", input: nil, timeout: .seconds(30))
+        guard made.status == 0 else {
+            throw TreeSync.Failure.rsyncFailed(made.status, UntrustedText.clean(made.stderr.split(separator: "\n").first.map(String.init) ?? "mkdir failed", limit: 200))
+        }
         let arguments = ["-az", "--delete", "--filter", "P .env", "--exclude", ".env", "-e", try SSH.rsyncShell(address: address, alias: alias),
                          directory.path + "/", "\(alias):\(remote)/"]
         let output = try await runner.run(rsync, arguments, timeout: .seconds(600))

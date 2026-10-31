@@ -16,6 +16,8 @@ public actor GitHubPoller {
     /// A repo with no run in the last day: each poll is a `gh` process, and dozens of quiet repos cost more than everything else RMJ does.
     public static let quietInterval: TimeInterval = 300
     public static let backfillWindow: TimeInterval = 30 * 86400
+    /// How long after a run's last update GitHub's job list is still allowed to disagree with the run.
+    static let settleWindow: TimeInterval = 3600
     static let ownerListingTTL: TimeInterval = 3600
 
     private let api: GitHubAPI
@@ -169,7 +171,15 @@ public actor GitHubPoller {
         for run in pending {
             for attempt in 1...max(1, run.runAttempt) {
                 let marker = "done:\(repo):\(run.id):\(attempt)"
-                if try await readPoll(marker) != nil { continue }
+                // A marker written within the settle window of the run's last update does not cover a row that is still
+                // unfinished: that poll may have seen the run completed while the job list still said in_progress. A marker
+                // written later is a give-up on a job GitHub never settles, and stays final.
+                let settled = run.updatedAt.map { started.timeIntervalSince($0) >= Self.settleWindow } ?? false
+                let unfinished = known.values.contains { $0.info.runId == run.id && $0.info.runAttempt == attempt && !$0.state.isSettled }
+                if let done = try await readPoll(marker) {
+                    let early = run.updatedAt.map { Date(timeIntervalSince1970: TimeInterval(done.at) / 1000).timeIntervalSince($0) < Self.settleWindow } ?? true
+                    if !(unfinished && early) { continue }
+                }
                 let jobs = try await listJobs(repo: repo, run: run, attempt: attempt)
                 let live = jobs.filter { $0.status == "queued" || $0.status == "in_progress" }
                 if !live.isEmpty, registrations == nil { registrations = .some(try await runnerRegistrations(repo: repo)) }
@@ -180,8 +190,8 @@ public actor GitHubPoller {
                                     known: &known, now: started)
                     result.jobs += 1
                 }
-                // Only a completed attempt is final; its marker lets later polls skip it. Written after every job is stored.
-                if attempt < run.runAttempt || run.status == "completed" { try await writePoll(marker, etag: nil, at: started) }
+                // Only a completed attempt whose jobs all settled is final; its marker lets later polls skip it. Written after every job is stored.
+                if attempt < run.runAttempt || (run.status == "completed" && (live.isEmpty || settled)) { try await writePoll(marker, etag: nil, at: started) }
             }
         }
         try await writePoll(key, etag: "\(stamp):\(runs.etag ?? "")", at: started)

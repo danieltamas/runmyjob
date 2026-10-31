@@ -67,6 +67,9 @@ public enum SensorChips {
             let used = max(0, total - free)
             chips.append(chip("disk", String(format: "%.0f%%", Double(used) * 100 / Double(total)), share(used, of: total), of: megabytes(total)))
         }
+        if let health = latest.sensors?.diskHealth, let verdict = diskVerdict(health) {
+            chips.append(SensorChip(id: "health", label: "health", value: verdict.value, tone: verdict.tone, series: [], spinning: false, stale: stale, detail: verdict.detail))
+        }
         if let rx = now?.rxBytesPerSecond { chips.append(chip("down", rate(rx), series: pairs.compactMap(\.rxBytesPerSecond))) }
         if let tx = now?.txBytesPerSecond { chips.append(chip("up", rate(tx), series: pairs.compactMap(\.txBytesPerSecond))) }
         if let uptime = latest.uptime, uptime.isFinite, (0...31_536_000_000).contains(uptime) { chips.append(chip("uptime", duration(uptime))) }
@@ -82,6 +85,18 @@ public enum SensorChips {
             if let fastest = sensors.fansRPM.max() { chips.append(chip("fan", "\(fastest) rpm", spinning: true)) }
         }
         return chips
+    }
+
+    /// The worst thing the disk reports, or "OK" when every signal it could read is clean; nil when it read none.
+    /// `detail` says what was checked, so "OK" on a disk with no SMART is not mistaken for a SMART pass.
+    static func diskVerdict(_ health: DiskHealth) -> (value: String, tone: JobRowPresentation.Tone, detail: String)? {
+        let checked = health.smartPassed == nil ? "no SMART here" : "SMART passed"
+        if health.smartPassed == false { return ("SMART failing", .crit, "replace the disk") }
+        if health.readOnly == true { return ("Read-only", .crit, "remounted after errors") }
+        if let errors = health.ioErrors, errors > 0 { return ("\(errors) I/O errors", .warn, "in the kernel log") }
+        if let inodes = health.inodePercent, inodes >= 90 { return ("Inodes \(inodes)%", inodes >= 97 ? .crit : .warn, "files, not bytes") }
+        guard health.readOnly != nil || health.ioErrors != nil || health.smartPassed != nil else { return nil }
+        return ("OK", health.smartPassed == true ? .ok : .plain, checked)
     }
 
     static func details(_ probe: DestinationProbeResult?) -> [DestinationCardPresentation.Line] {

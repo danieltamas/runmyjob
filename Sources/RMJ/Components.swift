@@ -378,15 +378,33 @@ extension View {
 }
 
 /// A card that lifts its core on hover and opens something on click: idle, hover, pressed.
+extension Color {
+    /// A hue picked from `name`, the same in every run: cards of one tenant share it. Used only as a faint wash.
+    static func wash(of name: String) -> Color {
+        let sum = name.lowercased().unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF }
+        return Color(hue: Double(sum % 360) / 360, saturation: 0.7, brightness: 0.8)
+    }
+
+    /// This colour moved `amount` (0...1) towards `other`.
+    func blended(with other: Color, amount: Double) -> Color {
+        guard let from = NSColor(self).usingColorSpace(.sRGB), let towards = NSColor(other).usingColorSpace(.sRGB),
+              let mixed = from.blended(withFraction: amount, of: towards) else { return self }
+        return Color(nsColor: mixed)
+    }
+}
+
 struct HoverCard<Content: View>: View {
     var accent: Color?
+    /// A tenant name: the card is washed with that tenant's hue, slightly, so boxes of one company group by eye.
+    var tenant: String?
     let action: (() -> Void)?
     @ViewBuilder let content: Content
     @State private var hovering = false
     @State private var pressed = false
 
     var body: some View {
-        Bezel(fill: hovering && action != nil ? Theme.coreHover : Theme.core) {
+        let base = hovering && action != nil ? Theme.coreHover : Theme.core
+        Bezel(fill: tenant.map { base.blended(with: .wash(of: $0), amount: 0.09) } ?? base) {
             HStack(spacing: 0) {
                 if let accent {
                     Capsule().fill(accent.gradient).frame(width: 3).padding(.vertical, 10).padding(.leading, 6)

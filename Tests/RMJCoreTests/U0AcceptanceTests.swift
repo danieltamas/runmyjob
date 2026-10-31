@@ -1,6 +1,5 @@
 import Darwin
 import Foundation
-import Security
 import Testing
 @testable import RMJCore
 
@@ -367,38 +366,6 @@ func keychainRoundTripAndReplacement() throws {
     try keychain.remove(account: account)
     #expect(try keychain.read(account: account) == nil)
     try keychain.remove(account: account)
-}
-
-// Real login keychain changes can prompt for its password; opt in: RMJ_KEYCHAIN=1 swift test --filter Keychain
-@Test(
-    "Keychain read refuses an untrusted item without prompting",
-    .enabled(if: ProcessInfo.processInfo.environment["RMJ_KEYCHAIN"] == "1")
-)
-func keychainReadDisablesPrompts() throws {
-    let keychain = Keychain(service: "rmj-u0-denied-test-\(UUID().uuidString)")
-    let account = "throwaway"
-    defer { try? keychain.remove(account: account) }
-    // Trust a different executable so this test process needs approval to read the item.
-    var trusted: SecTrustedApplication?
-    let trustedStatus = SecTrustedApplicationCreateFromPath("/usr/bin/false", &trusted)
-    try #require(trustedStatus == errSecSuccess)
-    let application = try #require(trusted)
-    var access: SecAccess?
-    let accessStatus = SecAccessCreate("U0 isolated password" as CFString, [application] as CFArray, &access)
-    try #require(accessStatus == errSecSuccess)
-    let itemAccess = try #require(access)
-    let added = SecItemAdd([
-        kSecClass: kSecClassGenericPassword,
-        kSecAttrService: keychain.service,
-        kSecAttrAccount: account,
-        kSecValueData: Data("isolated test secret".utf8),
-        kSecAttrAccess: itemAccess,
-    ] as CFDictionary, nil)
-    try #require(added == errSecSuccess)
-    let clock = ContinuousClock()
-    let start = clock.now
-    #expect(throws: Keychain.Failure.denied) { try keychain.read(account: account) }
-    #expect(start.duration(to: clock.now) < .seconds(5))
 }
 
 // Real login keychain changes can prompt for its password; opt in: RMJ_KEYCHAIN=1 swift test --filter Keychain

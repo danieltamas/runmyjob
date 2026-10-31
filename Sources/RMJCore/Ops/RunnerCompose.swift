@@ -14,7 +14,15 @@ public struct RunnerCompose: Sendable, Equatable {
     /// What a deploy must find on the destination to be current: the services and the generated file.
     public var manifest: String { services.joined(separator: "\n") + "\n" }
 
-    public init(base: String, targets: [String], host: String) {
+    /// A label GitHub accepts that is also safe to put in the generated YAML.
+    static func isLabel(_ label: String) -> Bool {
+        guard let first = label.first, first.isASCII, first.isLetter || first.isNumber, label.utf8.count <= 64 else { return false }
+        return label.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || "._-".contains($0)) }
+    }
+
+    /// `labels` maps a target to extra runner labels, added after the one derived from the service name.
+    public init(base: String, targets: [String], host: String, labels: [String: [String]] = [:]) {
+        let extras = Dictionary(labels.map { (Self.key($0.key), $0.value) }, uniquingKeysWith: { first, _ in first })
         let bundled = Self.bundledServices(base)
         var taken = Set(bundled.values)
         var names: [String] = []
@@ -27,7 +35,7 @@ public struct RunnerCompose: Sendable, Equatable {
             let service = Self.serviceName(target, taken: taken)
             taken.insert(service)
             names.append(service)
-            blocks.append(Self.block(service: service, target: target, host: host, version: version))
+            blocks.append(Self.block(service: service, target: target, host: host, version: version, extraLabels: extras[Self.key(target)] ?? []))
         }
         services = names
         unused = targets.isEmpty ? [] : Set(bundled.values).subtracting(names).sorted()
@@ -82,11 +90,17 @@ public struct RunnerCompose: Sendable, Equatable {
         return candidate
     }
 
-    private static func block(service: String, target: String, host: String, version: String) -> String {
+    /// `RUNNER_LABELS` of a runner: the label derived from its service name, then the target's extras, each once.
+    static func runnerLabels(service: String, extras: [String]) -> String {
+        var seen = Set<String>()
+        return ([String(service.dropFirst("runner-".count))] + extras.filter(isLabel)).filter { seen.insert($0).inserted }.joined(separator: ",")
+    }
+
+    private static func block(service: String, target: String, host: String, version: String, extraLabels: [String]) -> String {
         let scope = target.hasPrefix("org:") ? "org" : "repo"
         let name = target.hasPrefix("org:") ? String(target.dropFirst(4)) : target
         let variable = RunnerTarget.environmentName(target) ?? "GH_PAT"
-        let label = String(service.dropFirst("runner-".count))
+        let label = runnerLabels(service: service, extras: extraLabels)
         return """
           \(service):
             build: .

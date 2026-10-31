@@ -90,7 +90,7 @@ public enum CommandGuard {
     /// A segment that is already under `rmj run` or `rx`, or opted out with RX_LOCAL=1, up to the next separator:
     /// it is dropped, so a second command after `;` is still judged.
     private static let routed = regex(#"(?:RX_LOCAL=1|rx\s|rmj\s+run(?:\s|$))[^;&|\n]*"#)
-    private static let check = regex(#"(?:cargo\s+(?:\+\S+\s+)?(?:test|check|clippy|nextest|bench|doc|deny)(?:[\s;&|)]|$)|cargo\s+fmt\s[^;&|]*--check|just\s+(?:check|test|lint|deny)(?:[\s;&|)]|$)|(?:(?:bash|sh)\s+)?(?:\./)?scripts/check\.sh(?:[\s;&|)]|$))"#)
+    private static let check = regex(#"(?:cargo\s+(?:\+\S+\s+)?(?:test|check|clippy|nextest|bench|doc|deny)(?:[\s;&|)]|$)|cargo\s+fmt\s[^;&|]*--check|just\s+(?:check|test|lint|deny)(?:[\s;&|)]|$)|(?:npm|pnpm|yarn|bun)(?:\s+(?:-r|--recursive|--silent|-s|--if-present|--workspaces|-ws)|\s+(?:--prefix|--filter|-F|--workspace|-w|--cwd|-C|--dir)(?:=|\s+)\S+)*\s+(?:run\s+)?(?:test|lint|typecheck|check)(?::[\w:.-]+)?(?:[\s;&|)]|$)|(?:(?:bash|sh)\s+)?(?:\./)?scripts/check\.sh(?:[\s;&|)]|$))"#)
     private static let build = regex(#"cargo\s+(?:\+\S+\s+)?build(?:[\s;&|)]|$)"#)
     private static let changeDirectory = try! NSRegularExpression(pattern: #"(^\s*|[;&|\n]\s*)cd\s+("[^"]*"|'[^']*'|[^\s;&|]+)"#)
     private static let shellSyntax = try! NSRegularExpression(pattern: #"[;&|<>()$`\\\n"'*?{}]|^\s*[A-Za-z_][A-Za-z0-9_]*="#)

@@ -56,6 +56,14 @@ public struct DestinationOnboarding: Sendable {
         return DestinationConfig.Defaults(cpus: nil, memory: "\(min(12, max(1, budget / max(1, draft.maxJobs))))g")
     }
 
+    /// `org:Name` targets make the org the tenant's owner; `owner/repo` targets another tenant does not already claim become its repos.
+    private static func newTenant(for draft: DestinationDraft, others: [String: TenantConfig]) -> TenantConfig {
+        let claimed = others.values.flatMap { $0.repos ?? [] }.map { $0.lowercased() }
+        let owners = draft.runnerTargets.filter { $0.hasPrefix("org:") }.map { String($0.dropFirst(4)) }
+        let repos = draft.runnerTargets.filter { !$0.hasPrefix("org:") && !claimed.contains($0.lowercased()) }
+        return TenantConfig(owners: owners.isEmpty ? nil : owners, repos: repos.isEmpty ? nil : repos, shared: nil)
+    }
+
     public func run(_ draft: DestinationDraft, tailnet: TailnetState) async -> OnboardingReport {
         var report = OnboardingReport(steps: [], written: false)
         func add(_ name: String, _ ok: Bool, _ detail: String, hint: String? = nil) -> Bool {
@@ -69,6 +77,17 @@ public struct DestinationOnboarding: Sendable {
         guard !draft.name.isEmpty, rules.destinations[draft.name] == nil else {
             _ = add("name", false, "\"\(draft.name)\" is empty or already a destination", hint: "Pick another name")
             return report
+        }
+        // A company the rules file does not know yet is created with the add: it owns the owners and repos its runners serve.
+        if rules.tenants[draft.tenant] == nil, draft.tenant == draft.tenant.lowercased(), !draft.tenant.isEmpty {
+            // An org another company already owns is never claimed by a new one: two tenants listing one owner would make both ambiguous.
+            let taken = Set(rules.tenants.values.flatMap { $0.owners ?? [] }.map { $0.lowercased() })
+            if let clash = draft.runnerTargets.filter({ $0.hasPrefix("org:") }).map({ String($0.dropFirst(4)) }).first(where: { taken.contains($0.lowercased()) }) {
+                _ = add("tenant", false, "the organization \(clash) already belongs to another tenant", hint: "Pick that tenant for this destination")
+                return report
+            }
+            rules.tenants[draft.tenant] = Self.newTenant(for: draft, others: rules.tenants)
+            _ = add("tenant", true, "new tenant \"\(draft.tenant)\" created")
         }
         let target = DestinationTarget(alias: draft.sshAlias, peerID: draft.peerID)
         let availability = DestinationResolver.resolve(target, in: tailnet)

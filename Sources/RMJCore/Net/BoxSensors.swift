@@ -20,10 +20,11 @@ public struct SensorSnapshot: Sendable, Equatable {
     public let hottestC: Double?
     /// Fans reporting more than 0 rpm.
     public let fansRPM: [Int]
+    public let diskHealth: DiskHealth?
 
     public init(kind: SystemKind = .unknown, cpuBusyTicks: Int64? = nil, cpuTotalTicks: Int64? = nil, swapTotalMB: Int? = nil,
                 swapUsedMB: Int? = nil, netRxBytes: Int64? = nil, netTxBytes: Int64? = nil, cpuPressure: Double? = nil,
-                memoryPressure: Double? = nil, hottestC: Double? = nil, fansRPM: [Int] = []) {
+                memoryPressure: Double? = nil, hottestC: Double? = nil, fansRPM: [Int] = [], diskHealth: DiskHealth? = nil) {
         self.kind = kind
         self.cpuBusyTicks = cpuBusyTicks
         self.cpuTotalTicks = cpuTotalTicks
@@ -35,6 +36,7 @@ public struct SensorSnapshot: Sendable, Equatable {
         self.memoryPressure = memoryPressure
         self.hottestC = hottestC
         self.fansRPM = fansRPM
+        self.diskHealth = diskHealth
     }
 
     typealias Sections = [String: (rc: Int, lines: [String])]
@@ -82,7 +84,7 @@ public struct SensorSnapshot: Sendable, Equatable {
         }
         let snapshot = SensorSnapshot(kind: kind(sections["virt"], body("virt", anyStatus: true).first), cpuBusyTicks: busy, cpuTotalTicks: total,
                                       swapTotalMB: swapTotal, swapUsedMB: swapUsed, netRxBytes: rx, netTxBytes: tx,
-                                      cpuPressure: pressure["cpu"], memoryPressure: pressure["memory"], hottestC: temps.max(), fansRPM: fans)
+                                      cpuPressure: pressure["cpu"], memoryPressure: pressure["memory"], hottestC: temps.max(), fansRPM: fans, diskHealth: DiskHealth.read(sections["diskhealth"].flatMap { $0.rc == 0 ? $0.lines : nil } ?? []))
         return snapshot == SensorSnapshot() ? nil : snapshot
     }
 
@@ -129,5 +131,35 @@ public struct SensorRates: Sendable, Equatable {
             cpu = min(100, busy * 100 / total)
         }
         return SensorRates(cpuBusyPercent: cpu, rxBytesPerSecond: rx.map { $0 / seconds }, txBytesPerSecond: tx.map { $0 / seconds })
+    }
+}
+
+/// What the disk of the ssh user's home says about itself, from signals a plain user can read. Nothing here is a
+/// guess: a field stays nil when the box could not say (no `smartctl`, unreadable kernel log, WSL's virtual disk).
+public struct DiskHealth: Sendable, Equatable {
+    public let readOnly: Bool?
+    public let inodePercent: Int?
+    /// Kernel log lines that name a disk or filesystem error.
+    public let ioErrors: Int?
+    /// nil without SMART; false as soon as any disk fails it.
+    public let smartPassed: Bool?
+
+    static func read(_ lines: [String]) -> DiskHealth? {
+        var readOnly: Bool?, inodes: Int?, errors: Int?, smart: Bool?
+        for line in lines {
+            let parts = line.split(separator: " ")
+            guard parts.count == 2 else { continue }
+            switch (parts[0], parts[1]) {
+            case ("ro", "0"): readOnly = false
+            case ("ro", "1"): readOnly = true
+            case ("smart", "failed"): smart = false
+            case ("smart", "passed"): smart = smart ?? true
+            case ("inodes", let value): if let n = Int(value), (0...100).contains(n) { inodes = n }
+            case ("ioerr", let value): if let n = Int(value), (0...1_000_000_000).contains(n) { errors = n }
+            default: continue
+            }
+        }
+        let health = DiskHealth(readOnly: readOnly, inodePercent: inodes, ioErrors: errors, smartPassed: smart)
+        return readOnly == nil && inodes == nil && errors == nil && smart == nil ? nil : health
     }
 }

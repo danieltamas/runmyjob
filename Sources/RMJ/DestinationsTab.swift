@@ -18,7 +18,7 @@ struct DestinationsTab: View {
 }
 
 /// One destination (docs/DESIGN.md, Destinations): two lines closed, so twenty boxes stay a scannable list; the
-/// capacity detail, runners, images and actions open on a tap. The accent is the tenant's.
+/// capacity detail, runners, images and actions open on a tap. The tenant pill carries the state.
 struct DestinationCard: View {
     let card: DestinationCardPresentation
     @ObservedObject var model: PanelModel
@@ -28,7 +28,7 @@ struct DestinationCard: View {
     private var open: Bool { model.expanded.contains(key) }
 
     var body: some View {
-        HoverCard(accent: Theme.tenant(card.tenant), action: { withAnimation(Motion.spring) { model.toggle(key) } }) {
+        HoverCard(tenant: card.tenant, action: { withAnimation(Motion.spring) { model.toggle(key) } }) {
             VStack(alignment: .leading, spacing: 0) {
                 header
                 summary.padding(.top, 7)
@@ -49,10 +49,12 @@ struct DestinationCard: View {
         HStack(spacing: 6) {
             Text(card.name).font(.rowTitle).foregroundStyle(Theme.textPrimary).lineLimit(1).truncationMode(.middle)
                 .layoutPriority(1)
-            Chip(text: card.tenant, color: Theme.tenant(card.tenant), style: .outline)
+            // The tenant pill carries the state: its color is the box's, and a box that is not simply online says what it is.
+            // Only the state's first word shows ("offline", not "offline: peer offline, last seen ..."): the name keeps its room, the full text is the tooltip.
+            let word = card.state.text.split(separator: ":").first.map(String.init) ?? card.state.text
+            Chip(text: card.state.tone == .ok ? card.tenant : "\(card.tenant) - \(word)", color: Theme.color(card.state.tone), style: .outline)
+                .lineLimit(1).fixedSize().help(card.state.text)
             Spacer(minLength: 4)
-            Chip(text: card.state.text, color: Theme.color(card.state.tone), style: card.state.tone == .ok ? .tinted : .outline)
-                .lineLimit(1)
             Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.textTertiary)
                 .rotationEffect(.degrees(open ? 90 : 0))
         }
@@ -67,8 +69,10 @@ struct DestinationCard: View {
             if let memory = value("memory budget") { stat("mem", memory.value.replacingOccurrences(of: " of ", with: "/"), tone: memory.tone) }
             if !card.missingTools.isEmpty { stat("missing", card.missingTools.flatMap(\.programs).joined(separator: ", "), tone: .warn) }
             if !card.runners.isEmpty {
-                let healthy = card.runners.filter { $0.tone == .ok }.count
-                stat("runners", "\(healthy)/\(card.runners.count)", tone: healthy == card.runners.count ? .plain : .warn)
+                // A runner working a job is healthy: only one that is down, unregistered or unknown counts against the box.
+                let busy = card.runners.filter { $0.tone == .running }.count
+                let healthy = card.runners.filter { $0.tone == .ok || $0.tone == .running }.count
+                stat("runners", "\(healthy)/\(card.runners.count)" + (busy > 0 ? " (\(busy) busy)" : ""), tone: healthy == card.runners.count ? .plain : .warn)
             }
             Spacer(minLength: 0)
             if let stale = card.capacity.first?.stale { Chip(text: stale, color: Theme.unknown, style: .dashed) }

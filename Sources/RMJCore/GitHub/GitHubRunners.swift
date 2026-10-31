@@ -64,7 +64,7 @@ public enum GitHubRunners {
         var runners = [GitHubRunner](), page = 1
         while true {
             let response = try await api.get(path, query: ["per_page": "100", "page": String(page)], etag: nil, token: token)
-            guard response.status == 200 else { throw Failure(message: permissionHint(response) ?? "GitHub answered \(response.status) listing runners of \(target)") }
+            guard response.status == 200 else { throw Failure(message: permissionHint(response, target: target) ?? "GitHub answered \(response.status) listing runners of \(target)") }
             runners += try decode(response.body)
             guard response.hasNextPage else { return runners }
             page += 1
@@ -90,8 +90,12 @@ public enum GitHubRunners {
     }
 
     /// A 403 names the permission the PAT lacks in `X-Accepted-GitHub-Permissions`; the answer body is enough to tell it apart.
-    static func permissionHint(_ response: GitHubResponse) -> String? {
-        guard response.status == 403 || response.status == 404 else { return nil }
-        return "the PAT lacks the permission to manage runners (GitHub answered \(response.status))"
+    static func permissionHint(_ response: GitHubResponse, target: String) -> String? {
+        switch response.status {
+        case 403: return "the PAT lacks the permission to manage runners of \(target) (GitHub answered 403)"
+        // GitHub answers 404 for a name that does not exist as well as for one the PAT cannot see.
+        case 404: return "GitHub shows this PAT no \(target) (404): check the exact GitHub name, and that the PAT was created for it with the self-hosted runners permission"
+        default: return nil
+        }
     }
 }

@@ -138,7 +138,7 @@ The full threat model is in [SECURITY.md](SECURITY.md).
 ## For agents
 
 RMJ is made to sit under coding agents (Claude Code, Codex, OpenCode, Hermes). Run
-`rmj hooks install claude-code` or press Install in Settings > Hooks: a bare `cargo test` or `just check` is
+`rmj hooks install claude-code` or press Install in Settings > Hooks: a bare `cargo test`, `just check` or `npm test` is
 then blocked with the `rmj run` form, so it lands on a box and in the panel. Codex, OpenCode and Hermes get shims.
 `rmj mcp` is a read-only MCP server (jobs, logs, failures, routes), off until you switch it on in Settings > Agent
 access. Details in [docs/AGENT-API.md](docs/AGENT-API.md).

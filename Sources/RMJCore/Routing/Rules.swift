@@ -32,6 +32,8 @@ public struct DestinationConfig: Codable, Sendable, Equatable {
     public var rxDefaults: Defaults?
     public var runnerStack: String?
     public var runnerTargets: [String]?
+    /// Extra labels per runner target (`{"owner/repo": ["lexito"]}`), for workflows whose `runs-on` names a label the target's name does not give.
+    public var runnerLabels: [String: [String]]?
     /// Programs and shells the box must provide (`["bash", "zsh", "bun"]`); checked when the box is set up.
     public var requires: [String]?
 
@@ -46,7 +48,7 @@ public struct DestinationConfig: Codable, Sendable, Equatable {
         case enabled, tenant, roles, home
         case peerID = "peer_id", sshAlias = "ssh_alias", maxJobs = "max_jobs", memoryBudget = "memory_budget", agentSlots = "agent_slots"
         case rxDefaults = "rx_defaults", runnerStack = "runner_stack", runnerTargets = "runner_targets"
-        case requires
+        case runnerLabels = "runner_labels", requires
     }
 }
 

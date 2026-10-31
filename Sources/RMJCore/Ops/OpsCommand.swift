@@ -21,7 +21,7 @@ public enum OpsCommand {
                 guard let stack = environment["RMJ_STACK"].map({ URL(fileURLWithPath: $0) }) ?? SupportFiles.locate("runner-stack", environment: environment) else {
                     return RunCommand.fail("the runner stack files were not found; set RMJ_SUPPORT to a Support directory")
                 }
-                let report = try await RunnerStackDeployer(shell: shell, stack: stack, home: destination.home, tokens: DestinationOps.tokens(targets, home: context.home), requiredTargets: targets, host: name).report()
+                let report = try await RunnerStackDeployer(shell: shell, stack: stack, home: destination.home, tokens: DestinationOps.tokens(targets, home: context.home), requiredTargets: targets, host: name, labels: destination.runnerLabels ?? [:]).report()
                 print(report.isNoOp ? "deploy: no-op (stack and credentials are current)" : "deploy: would change \(report.changedFiles.count) files\(report.credentialsChanged ? " and credentials" : "")\(report.composeChanged ? " and the generated compose file" : "")\(report.legacyEnv ? " and the old .env" : "")")
                 for runner in report.runners { print("\(runner.name)  \(runner.state)  version \(runner.version ?? "unknown")  \(runner.status)") }
                 for image in try await RunnerImages.list(shell: shell) { print("image \(image.repository):\(image.tag)  \(image.age)") }

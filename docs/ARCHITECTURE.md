@@ -178,6 +178,35 @@ ETags; runners from `/repos/{owner}/{repo}/actions/runners` and `/orgs/{org}/act
 Queue reason: the registrations for the job's labels, classified as stale (offline, idle), all busy,
 none online, or dispatch delay. Rerun: `gh run rerun <id> [--failed]`.
 
+### Burst runners (autoscale)
+
+The static runners of a target are the floor. While the app runs, `RunnerScalingLoop` (every 15 s, nothing contacted
+when no GitHub job is queued and no burst runner exists) counts the queued jobs a target can serve against its idle
+runners; a job that waited 20 s with no idle runner starts one burst runner on the serving destination with the lowest
+measured `(load1 + planned * 4) / cpus` that has a free slot (cap 3 per box, 8 GiB of the memory budget each, load
+ceiling 0.9). Only destinations that list the target in `runner_targets` qualify, so tenants never mix. A burst runner
+is a one-shot `docker run -d --rm` container `burst-<slug>-<6hex>` labelled `rmj.burst=<target>` on the stack's
+network, with the same labels as the static runner; the PAT reaches it only as ssh stdin. One that took no job within
+180 s, or has been idle 60 s, is removed. Adding a box to a target adds capacity with no other change. Actions go to
+`~/.rmj/logs/scaler.log`; the menu bar footer shows the last one.
+
+### Runner extras (a destination's own additions)
+
+`~/.rmj/runner-extras/<destination>/` holds files RMJ writes beside the runner stack on that box: a
+`docker-compose.extra.yml` (merged last into `COMPOSE_FILE`) and what it builds from. They give runners what the bare
+`gh-runner` image lacks (a toolchain image under its own tag, Postgres and Redis sidecars, cache volumes) without RMJ
+knowing any repo. Their services start with the destination's runners and are not swept as orphans; the stack sync deletes
+unknown files on the box, so every extras file is written back after it. Names are plain, at most 20 files of 1 MB, and
+never replace a stack file. A container that is not one of the destination's runner targets is named `ci-*`, because RMJ
+expects every `runner-*` container to be a target's.
+
+### Box health sensors
+
+The probe's `diskhealth` step reads what a plain user can: read-only mount, inode use, kernel I/O errors (only when the
+log is readable) and SMART where `smartctl` runs without sudo. Fields it cannot read stay nil; the card's "Disk health" tile
+says what was checked, so OK on a disk without SMART is never shown as a SMART pass. ssh to a box carries
+`ForwardAgent=no`, `ForwardX11=no` and `ClearAllForwardings=yes` whatever `~/.ssh/config` says for the alias.
+
 ## Log streaming
 
 Optional (docs/LOG-STREAMING.md). `RunEngine` opens a `LogStream` per run when `LogStreamer.make` finds an
@@ -202,6 +231,14 @@ container config, so restarts and reboots work with the Mac off. The box keeps `
 the values last handed over, which is how a rotated PAT is seen; a deploy also removes a `.env` an older RMJ left.
 The streamed output of the deploy is scanned for the PAT values and redacted before it reaches the panel, the log
 or the ledger.
+
+Since 2026-10-31 every Keychain call (app, CLI, hooks) runs `/usr/bin/security` (`add-generic-password -U ... -T
+/usr/bin/security`, `find-generic-password -w`, `delete-generic-password`) instead of the Security framework. An item
+created that way trusts `security`, an Apple binary whose signature never changes, so no RMJ build is ever prompted,
+the same as any other `security` item. A secret is in the arguments of `security` only while a write runs. Without
+prompts allowed a call is killed after 5 s and counts as `denied`; the app waits up to 60 s for the user.
+`Keychain.swift` is the only place that talks to it. The measurement below describes the per-binary model this replaced
+and is kept as the reason for the change.
 
 Measured 2026-10-27 with `scripts/keychain-check.sh` (ad hoc signed bundle, an update simulated by
 re-signing both binaries with an empty entitlements blob: a new cdhash, same identifier and certificate): before the update the CLI that wrote an item reads

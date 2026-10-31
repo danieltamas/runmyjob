@@ -10,6 +10,7 @@ enum SensorIcon {
         case "memory": "memorychip"
         case "load": "speedometer"
         case "disk": "internaldrive"
+        case "health": "stethoscope"
         case "down": "arrow.down"
         case "up": "arrow.up"
         case "uptime": "clock"
@@ -25,6 +26,7 @@ enum SensorIcon {
         case "memory": "Memory used"
         case "load": "Load"
         case "disk": "Disk used"
+        case "health": "Disk health"
         case "down": "Download"
         case "up": "Upload"
         case "uptime": "Uptime"
@@ -65,7 +67,7 @@ struct SensorRow: View {
     let chips: [SensorChip]
     let visible: Bool
 
-    private static let compact: Set<String> = ["cpu", "memory", "load", "disk", "down", "up", "swap", "temp", "fan"]
+    private static let compact: Set<String> = ["cpu", "memory", "load", "disk", "health", "down", "up", "swap", "temp", "fan"]
 
     var body: some View {
         let row = chips.filter { Self.compact.contains($0.id) }

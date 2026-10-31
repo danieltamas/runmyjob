@@ -57,6 +57,7 @@ struct DestinationsPane: View {
             ForEach(viable, id: \.peerID) { row in
                 BoxRow(row: row, onAdd: { adding = row }, onRepair: { repairing = $0 }, onTokens: { tokens = $0 })
             }
+            BoxContents()
         }
         .task { await boxes.loop() }
         .sheet(item: Binding(get: { adding.map { PeerSheet(row: $0) } }, set: { adding = $0?.row })) { sheet in

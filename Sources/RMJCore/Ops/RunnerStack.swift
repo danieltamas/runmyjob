@@ -78,15 +78,21 @@ public struct RunnerStackDeployer: Sendable {
     private let notice: @Sendable (String) -> Void
     private let requiredTargets: [String]
     private let host: String
+    private let labels: [String: [String]]
     private let registrations: (@Sendable () async throws -> [GitHubRunner])?
+    private let extras: RunnerExtras
+    var extrasHaveCompose: Bool { extras.hasCompose }
 
     /// `tokens` maps a runner target (`owner/name`, `org:Name`) to its PAT. `requiredTargets` are the destination's
     /// runner targets: a deploy hands compose every PAT at once, so it refuses unless every one has one. With `registrations`,
     /// a deploy that would change anything refuses while a runner of the stack is busy.
     public init(shell: OpsShell, stack: URL, home: String, tokens: [String: String], requiredTargets: [String] = [], host: String = "fleet",
-                registrations: (@Sendable () async throws -> [GitHubRunner])? = nil, notice: @escaping @Sendable (String) -> Void = { _ in }) {
+                labels: [String: [String]] = [:], registrations: (@Sendable () async throws -> [GitHubRunner])? = nil,
+                extras: RunnerExtras? = nil, notice: @escaping @Sendable (String) -> Void = { _ in }) {
+        self.extras = extras ?? RunnerExtras.load(destination: host)
         self.requiredTargets = requiredTargets
         self.host = host
+        self.labels = labels
         self.registrations = registrations
         self.shell = shell
         self.stack = stack
@@ -116,7 +122,7 @@ public struct RunnerStackDeployer: Sendable {
     /// The services of the destination's runner targets: the bundled ones plus the generated ones.
     private func compose() -> RunnerCompose {
         let base = (try? String(contentsOf: stack.appendingPathComponent("docker-compose.yml"), encoding: .utf8)) ?? ""
-        return RunnerCompose(base: base, targets: requiredTargets, host: host)
+        return RunnerCompose(base: base, targets: requiredTargets, host: host, labels: labels)
     }
 
     public func deploy() async throws -> DeployReport {
@@ -138,10 +144,17 @@ public struct RunnerStackDeployer: Sendable {
             try await writeFile(RunnerCompose.fileName, Data(generated.utf8))
             report.performed.append("wrote \(RunnerCompose.fileName)")
         }
+        // The sync deletes the destination's own files too; they are written back whenever it ran.
+        let stackNames = try stackHashes().keys
+        for name in extras.files.keys.sorted() where !report.changedFiles.isEmpty && !stackNames.contains(name) {
+            try await writeFile(name, extras.files[name]!)
+        }
         if !requiredTargets.isEmpty { try await writeFile(Self.manifestName, Data(compose.manifest.utf8)) }
-        // Only the services of this destination's targets start; the bundled file may hold others.
-        let services = compose.services.isEmpty ? "" : " " + compose.services.map(SSH.quote).joined(separator: " ")
-        let files = compose.generated == nil ? "" : "COMPOSE_FILE=docker-compose.yml:\(RunnerCompose.fileName) "
+        // Only the services of this destination's targets and its own extras start; the bundled file may hold others.
+        var seen = Set<String>()
+        let started = (compose.services + extras.services).filter { seen.insert($0).inserted }
+        let services = started.isEmpty ? "" : " " + started.map(SSH.quote).joined(separator: " ")
+        let files = composeFiles(generated: compose.generated != nil)
         let env = Data(try envContent().utf8)
         for step in ["docker compose build", "docker compose up -d"] {
             let flags = step.hasSuffix("up -d") ? " --remove-orphans" : ""
@@ -198,7 +211,7 @@ public struct RunnerStackDeployer: Sendable {
         let local = try localHashes()
         let names = local.keys.sorted().map(SSH.quote).joined(separator: " ")
         // A missing directory or file is a difference; any other failure is an error, never a reason to deploy.
-        let output = try await shell.run("if [ -d \(SSH.quote(directory)) ]; then cd \(SSH.quote(directory)) && sha256sum \(names) 2>&1; else echo __nodir__; fi",
+        let output = try await shell.run("if [ -d \(SSH.quote(directory)) ]; then cd \(SSH.quote(directory)) && sha256sum -- \(names) 2>&1; else echo __nodir__; fi",
                                          input: nil, timeout: .seconds(30))
         // 0, or 1 for missing files (checked below); anything else is a failed command, not a difference.
         guard output.status == 0 || output.status == 1 else { throw Failure.remote("checksum read exited \(output.status)") }
@@ -212,7 +225,14 @@ public struct RunnerStackDeployer: Sendable {
         return local.keys.sorted().filter { remote[$0] != local[$0] }
     }
 
+    /// The destination's own files sit beside the stack's; one that would replace a stack file is not applied.
     private func localHashes() throws -> [String: String] {
+        var hashes = try stackHashes()
+        for (name, data) in extras.files where hashes[name] == nil { hashes[name] = Self.hash(data) }
+        return hashes
+    }
+
+    private func stackHashes() throws -> [String: String] {
         var hashes = [String: String]()
         let base = stack.standardizedFileURL.path
         guard let walker = FileManager.default.enumerator(at: stack, includingPropertiesForKeys: [.isRegularFileKey]) else { return hashes }
@@ -243,5 +263,13 @@ public struct RunnerStackDeployer: Sendable {
         var sanitizer = LogSanitizer()
         if !text.isEmpty { notice(String(decoding: sanitizer.clean(Data(text.utf8)), as: UTF8.self)) }
         guard output.status == 0 else { throw Failure.remote("\(step) exited \(output.status)") }
+    }
+}
+
+extension RunnerStackDeployer {
+    /// `COMPOSE_FILE` for a command run in the stack directory: the bundled file, then the generated one and the destination's own, when there are any.
+    func composeFiles(generated: Bool) -> String {
+        let names = ["docker-compose.yml"] + (generated ? [RunnerCompose.fileName] : []) + (extrasHaveCompose ? [RunnerExtras.composeName] : [])
+        return names.count == 1 ? "" : "COMPOSE_FILE=\(names.joined(separator: ":")) "
     }
 }

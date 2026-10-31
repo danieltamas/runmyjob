@@ -189,7 +189,7 @@ public struct DestinationSetup: Sendable {
             return Step(name: "runner stack", outcome: .failed, detail: "no PAT for \(missing)", hint: "Store it in the Keychain: security add-generic-password -s ro.danieltamas.rmj -a rmj.pat.\(missing) -w")
         }
         let deployer = RunnerStackDeployer(shell: shell, stack: stack, home: config.home, tokens: tokens, requiredTargets: targets, host: name,
-                                           registrations: registrations, notice: notice)
+                                           labels: config.runnerLabels ?? [:], registrations: registrations, notice: notice)
         do {
             let report = try await deployer.deploy()
             return report.performed.isEmpty

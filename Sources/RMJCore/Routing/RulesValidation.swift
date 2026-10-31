@@ -10,7 +10,7 @@ public enum RulesValidation {
     private static let schema: [String: Set<String>] = [
         "root": ["destinations", "tenants", "rules"],
         "destination": ["enabled", "peer_id", "ssh_alias", "tenant", "roles", "home", "max_jobs", "memory_budget",
-                        "rx_defaults", "runner_stack", "runner_targets", "requires"],
+                        "rx_defaults", "runner_stack", "runner_targets", "runner_labels", "requires"],
         "rx_defaults": ["cpus", "memory"],
         "tenant": ["owners", "repos", "shared"],
         "rule": ["name", "match", "to", "advisory", "image", "profile", "volumes", "cold_marker", "memory", "cpus", "hardening"],
@@ -91,6 +91,19 @@ public enum RulesValidation {
             let tenant = rules.tenants[destination.tenant]
             for target in destination.runnerTargets ?? [] where !Self.tenant(tenant, owns: target, others: rules.tenants.filter { $0.key != destination.tenant }.map(\.value)) {
                 throw RulesError(message: "destination \(name) serves runner target \"\(target)\", which tenant \"\(destination.tenant)\" does not own")
+            }
+            let served = Set((destination.runnerTargets ?? []).map { $0.lowercased() })
+            let labelKeys = (destination.runnerLabels ?? [:]).keys.map { $0.lowercased() }
+            if Set(labelKeys).count != labelKeys.count {
+                throw RulesError(message: "destination \(name) has runner_labels for the same target twice (keys differ only in case)")
+            }
+            for (target, labels) in (destination.runnerLabels ?? [:]).sorted(by: { $0.key < $1.key }) {
+                guard served.contains(target.lowercased()) else {
+                    throw RulesError(message: "destination \(name) has runner_labels for \"\(target)\", which is not one of its runner_targets")
+                }
+                if let bad = labels.first(where: { !RunnerCompose.isLabel($0) }) {
+                    throw RulesError(message: "destination \(name) has runner_labels \"\(bad)\" for \"\(target)\": use letters, digits, dot, dash or underscore, at most 64")
+                }
             }
         }
     }

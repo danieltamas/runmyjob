@@ -9,7 +9,9 @@ over ssh (never written to a file on the box), and checks that every runner regi
 
 GitHub is the queue. Each runner container registers with its target (an org, or one repo) and long-polls
 GitHub over outbound HTTPS; nothing is exposed inbound. A workflow selects a runner with
-`runs-on: [self-hosted, linux, <label>]`, where `<label>` is the runner's own label (the repo or org name).
+`runs-on: [self-hosted, linux, <label>]`, where `<label>` is the runner's own label (the repo or org name: `lexito.ro` gives `lexito-ro`). A workflow that
+asks for another label gets it from the destination's `runner_labels`, `{"owner/repo": ["lexito"]}`, added after the
+derived one; a deploy applies a changed list.
 
 A personal GitHub account has no org, so each private repo of a personal account gets its own runner (one
 service, idle at about 100 MB; limits are caps, not reservations). Public repos should stay on GitHub-hosted

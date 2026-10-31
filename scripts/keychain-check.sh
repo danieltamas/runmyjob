@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # Decision D7: can the app and the CLI read the same Keychain item, also after an update?
+# Since 2026-10-31 Keychain.swift writes and reads through /usr/bin/security, and an item it creates
+# trusts that Apple binary, so the answer must be "shared": a run that says "not shared" means the
+# trust model regressed (an item bound to RMJ's own signature, which an ad hoc update invalidates).
 # Runs the real binaries of an installed (or just built) RMJ.app, copied into a temporary
 # directory so nothing installed is touched:
-#   1. the CLI writes the item `rmj.test`, trusting the app binary;
+#   1. the CLI writes the item `rmj.test`, naming the app binary as trusted too;
 #   2. the app and the CLI each read it;
 #   3. an update is simulated (Info.plist version bumped, bundle signed again, same identity);
 #   4. the app and the CLI each read it again.
 # A read that would make macOS show an allow/deny dialog fails fast instead (exit 4 of the
 # probe); a probe that hangs is killed after 20 s and counts as a prompt too.
 # Exit 0: a conclusion was reached. The last line says "shared" (both read it before and after the
-# update) or "not shared" (D7: the CLI gets PATs from the app through PatHandoff, which is built
-# for exactly that). Exit 1: a probe failed in an unexpected way. Exit 2: usage or setup problem.
+# update) or "not shared" (a regression, see above). Exit 1: a probe failed in an unexpected way. Exit 2: usage or setup problem.
 # The login keychain is written (one item, removed at the end).
 #   --app <RMJ.app>  the bundle to test (default: the installed one, else build/RMJ.app)
 #   --identity <n>   signing identity (default: ad hoc, which is what a release is signed with;
@@ -98,7 +100,8 @@ expect_read "cli" "$cli_binary"
 
 ((failed)) && { echo "keychain-check: a probe failed unexpectedly" >&2; exit 1; }
 if ((refused)); then
-  echo "keychain-check: not shared with identity '$identity'. macOS asks (Allow / Always Allow) when a build reads an item another build wrote; only the app can show that dialog, so the CLI reads PATs the app hands over (D7)."
+  echo "keychain-check: NOT shared with identity '$identity': macOS asked for approval. Keychain.swift must go through /usr/bin/security so the item trusts it and not RMJ's own signature."
+  exit 1
 else
   echo "keychain-check: shared across an update with identity '$identity'"
 fi

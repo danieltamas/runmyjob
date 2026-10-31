@@ -40,7 +40,7 @@ struct HooksPane: View {
     private func detail(_ status: HookInstaller.Status) -> String {
         switch status.harness {
         case .claudeCode: "A pre-command hook in ~/.claude/settings.json: one entry, easy to remove."
-        default: "Shims for cargo and just in ~/.rmj/shims. Put that folder first on the PATH of this agent's environment. scripts/check.sh cannot be shimmed."
+        default: "Shims for cargo, just, npm, pnpm, yarn and bun in ~/.rmj/shims. Put that folder first on the PATH of this agent's environment. scripts/check.sh cannot be shimmed."
         }
     }
 
