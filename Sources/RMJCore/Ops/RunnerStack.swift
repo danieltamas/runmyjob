@@ -39,16 +39,20 @@ public struct RunnerContainer: Sendable, Equatable {
 public struct DeployReport: Sendable, Equatable {
     /// Files of the vendored stack that differ on the destination (or are missing there).
     public var changedFiles: [String]
-    public var envChanged: Bool
+    /// The Keychain's PATs are not the ones last deployed (compared by fingerprint; the PATs are never on the box).
+    public var credentialsChanged: Bool
+    /// An older RMJ left `.env` with PATs in it; a deploy removes it.
+    public var legacyEnv = false
     /// The generated compose file for targets the bundled stack has no service for differs on the destination.
     public var composeChanged = false
     public var runners: [RunnerContainer]
     public var performed: [String] = []
     /// Nothing to do: a deploy changes nothing.
-    public var isNoOp: Bool { changedFiles.isEmpty && !envChanged && !composeChanged }
+    public var isNoOp: Bool { changedFiles.isEmpty && !credentialsChanged && !legacyEnv && !composeChanged }
 }
 
-/// Deploys `Support/runner-stack` to `<home>/infra/gh-runners` and keeps its `.env` in step with the Keychain PATs.
+/// Deploys `Support/runner-stack` to `<home>/infra/gh-runners`. The Keychain's PATs reach the box only as the stdin of the
+/// `docker compose` commands, which export them into that process: no file on the box ever holds one.
 public struct RunnerStackDeployer: Sendable {
     public enum Failure: Error, Equatable, CustomStringConvertible {
         case badToken(String), conflictingTokens(String), missingToken(String), remote(String), badStack(String), busy([String])
@@ -65,6 +69,8 @@ public struct RunnerStackDeployer: Sendable {
     }
 
     static let manifestName = ".rmj-services"
+    /// The sha256 of what was last handed to compose, so a rotated PAT is seen without a PAT on the box.
+    static let fingerprintName = ".rmj-credentials"
     private let shell: OpsShell
     private let stack: URL
     private let directory: String
@@ -75,7 +81,7 @@ public struct RunnerStackDeployer: Sendable {
     private let registrations: (@Sendable () async throws -> [GitHubRunner])?
 
     /// `tokens` maps a runner target (`owner/name`, `org:Name`) to its PAT. `requiredTargets` are the destination's
-    /// runner targets: a deploy rewrites `.env` whole, so it refuses unless every one has a PAT. With `registrations`,
+    /// runner targets: a deploy hands compose every PAT at once, so it refuses unless every one has one. With `registrations`,
     /// a deploy that would change anything refuses while a runner of the stack is busy.
     public init(shell: OpsShell, stack: URL, home: String, tokens: [String: String], requiredTargets: [String] = [], host: String = "fleet",
                 registrations: (@Sendable () async throws -> [GitHubRunner])? = nil, notice: @escaping @Sendable (String) -> Void = { _ in }) {
@@ -92,9 +98,10 @@ public struct RunnerStackDeployer: Sendable {
     /// The deploy as it stands: read-only.
     public func report() async throws -> DeployReport {
         let changed = try await changedFiles()
-        // Without PATs there is nothing to compare: the remote .env is left alone, not reported as changed.
-        var envChanged = false
-        if !tokens.isEmpty { envChanged = try await remoteHash("\(directory)/.env") != Self.hash(Data(try envContent().utf8)) }
+        // Without PATs there is nothing to compare: the credentials are not reported as changed.
+        var credentialsChanged = false
+        if !tokens.isEmpty { credentialsChanged = try await remoteHash("\(directory)/\(Self.fingerprintName)") != Self.hash(try fingerprint()) }
+        let legacyEnv = try await remoteHash("\(directory)/.env") != nil
         var composeChanged = false
         let desired = compose()
         if !requiredTargets.isEmpty {
@@ -103,7 +110,7 @@ public struct RunnerStackDeployer: Sendable {
         if let generated = desired.generated, !composeChanged {
             composeChanged = try await remoteHash("\(directory)/\(RunnerCompose.fileName)") != Self.hash(Data(generated.utf8))
         }
-        return DeployReport(changedFiles: changed, envChanged: envChanged, composeChanged: composeChanged, runners: try await runners())
+        return DeployReport(changedFiles: changed, credentialsChanged: credentialsChanged, legacyEnv: legacyEnv, composeChanged: composeChanged, runners: try await runners())
     }
 
     /// The services of the destination's runner targets: the bundled ones plus the generated ones.
@@ -125,10 +132,6 @@ public struct RunnerStackDeployer: Sendable {
             try await shell.sync(directory: stack, to: directory)
             report.performed.append("synced \(report.changedFiles.count) files")
         }
-        if report.envChanged {
-            try await writeFile(".env", Data(try envContent().utf8))
-            report.performed.append("wrote .env")
-        }
         let compose = compose()
         // The sync deletes what the stack directory does not hold, so the generated file is written again after one.
         if let generated = compose.generated, report.composeChanged || !report.changedFiles.isEmpty {
@@ -139,19 +142,32 @@ public struct RunnerStackDeployer: Sendable {
         // Only the services of this destination's targets start; the bundled file may hold others.
         let services = compose.services.isEmpty ? "" : " " + compose.services.map(SSH.quote).joined(separator: " ")
         let files = compose.generated == nil ? "" : "COMPOSE_FILE=docker-compose.yml:\(RunnerCompose.fileName) "
+        let env = Data(try envContent().utf8)
         for step in ["docker compose build", "docker compose up -d"] {
             let flags = step.hasSuffix("up -d") ? " --remove-orphans" : ""
-            let command = "cd \(SSH.quote(directory)) && \(files)\(step)\(flags)\(services) 2>&1"
-            try check(try await shell.run(command, input: nil, timeout: .seconds(1800)), step)
+            try check(try await shell.run(composeScript("\(files)\(step)\(flags)\(services)", carrying: env), input: env.isEmpty ? nil : env, timeout: .seconds(1800)), step)
             report.performed.append(step)
         }
         if !compose.unused.isEmpty {
             let stale = compose.unused.map(SSH.quote).joined(separator: " ")
-            try check(try await shell.run("cd \(SSH.quote(directory)) && \(files)docker compose rm -sf \(stale) 2>&1", input: nil, timeout: .seconds(300)), "docker compose rm")
+            try check(try await shell.run(composeScript("\(files)docker compose rm -sf \(stale)", carrying: env), input: env.isEmpty ? nil : env, timeout: .seconds(300)), "docker compose rm")
             report.performed.append("docker compose rm")
+        }
+        // Only now: a deploy that failed above is retried as changed, and the old file still holds what the runners need.
+        if !tokens.isEmpty { try await writeFile(Self.fingerprintName, try fingerprint()) }
+        if report.legacyEnv {
+            try check(try await shell.run("rm -f \(SSH.quote("\(directory)/.env"))", input: nil, timeout: .seconds(30)), "removing .env")
+            report.performed.append("removed .env")
         }
         report.runners = try await runners()
         return report
+    }
+
+    /// The command with the PATs read from stdin and exported for it alone: they are in no argument and in no file. Names are
+    /// `GH_PAT_<owner>` from `envContent`, values plain tokens, so the read loop needs no escaping.
+    private func composeScript(_ command: String, carrying env: Data) -> String {
+        let read = env.isEmpty ? "" : "while IFS='=' read -r name value; do export \"$name=$value\"; done && "
+        return "cd \(SSH.quote(directory)) && \(read)\(command) 2>&1"
     }
 
     private func writeFile(_ name: String, _ content: Data) async throws {
@@ -174,6 +190,9 @@ public struct RunnerStackDeployer: Sendable {
         }
         return values.sorted(by: { $0.key < $1.key }).map { "\($0.key)=\($0.value)\n" }.joined()
     }
+
+    /// What `.rmj-credentials` holds: the hash of the `NAME=value` lines, from which no PAT can be read back (a PAT is 80+ random characters).
+    private func fingerprint() throws -> Data { Data((Self.hash(Data(try envContent().utf8)) + "\n").utf8) }
 
     private func changedFiles() async throws -> [String] {
         let local = try localHashes()

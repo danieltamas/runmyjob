@@ -17,7 +17,7 @@ public enum SupportFiles {
 }
 
 /// Brings a box from "reachable with docker and rsync" to "ready": the rx images it needs, the runner stack with
-/// its `.env` from the Keychain's PATs, and a check that every runner registered. Every step reads the box first and
+/// the Keychain's PATs handed to it over ssh (never written to the box), and a check that every runner registered. Every step reads the box first and
 /// changes only what differs, so running it again on a ready box changes nothing.
 public struct DestinationSetup: Sendable {
     public struct Step: Sendable, Equatable {
@@ -193,7 +193,7 @@ public struct DestinationSetup: Sendable {
         do {
             let report = try await deployer.deploy()
             return report.performed.isEmpty
-                ? Step(name: "runner stack", outcome: .unchanged, detail: "stack and .env are current", hint: nil)
+                ? Step(name: "runner stack", outcome: .unchanged, detail: "stack and credentials are current", hint: nil)
                 : Step(name: "runner stack", outcome: .changed, detail: report.performed.joined(separator: ", "), hint: nil)
         } catch let failure as RunnerStackDeployer.Failure {
             return Step(name: "runner stack", outcome: .failed, detail: failure.description, hint: nil)

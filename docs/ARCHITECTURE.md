@@ -194,9 +194,14 @@ once archived (`LogStreamerArchive`). Secrets: Keychain `rmj.sink.<id>`.
 
 Items `rmj.pat.<target>` (one per runner target), created from Settings > Destinations with the
 PAT pasted once, readable by the app and the CLI (same signing identity, access group), never
-exported. Deploy writes `.env` on the box over ssh from a template with the values substituted in
-memory and sent on stdin, mode 600; the streamed output of the deploy is scanned for the PAT values
-and redacted before it reaches the panel, the log or the ledger.
+exported. No file on a box holds a PAT: a deploy sends the values on the stdin of the ssh command that runs
+`docker compose build/up/rm`, whose first step reads and exports them for that process alone, so compose
+interpolates them into the runner containers' environment (the generated file says `${GH_PAT_X:?run through rmj}`,
+so a manual `up` on the box fails loudly). `entrypoint.sh` unsets the PAT before a job runs; Docker keeps it in the
+container config, so restarts and reboots work with the Mac off. The box keeps `.rmj-credentials`, the sha256 of
+the values last handed over, which is how a rotated PAT is seen; a deploy also removes a `.env` an older RMJ left.
+The streamed output of the deploy is scanned for the PAT values and redacted before it reaches the panel, the log
+or the ledger.
 
 Measured 2026-10-27 with `scripts/keychain-check.sh` (ad hoc signed bundle, an update simulated by
 re-signing both binaries with an empty entitlements blob: a new cdhash, same identifier and certificate): before the update the CLI that wrote an item reads

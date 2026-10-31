@@ -55,12 +55,17 @@ private actor SetupShell: OpsShell {
         else if script.contains("docker image inspect") { text = "" }
         else if script.contains("docker run") { text = "" }
         else if script.contains("docker ps -a") { text = containers }
+        else if script.contains("/infra/gh-runners/.env'") { text = "__absent__" }
+        else if script.contains("/infra/gh-runners/.rmj-credentials'") {
+            let fingerprint = Data((envHash + "\n").utf8)
+            text = envCurrent ? SHA256.hash(data: fingerprint).map { String(format: "%02x", $0) }.joined() : "__absent__"
+        }
         else if script.contains("sha256sum"), script.contains("| cut ") {
             if script.contains("/infra/gh-runners/.rmj-services'") {
                 text = servicesCurrent ? SHA256.hash(data: services).map { String(format: "%02x", $0) }.joined() : "__absent__"
             } else {
-                #expect(script.contains("/infra/gh-runners/.env'"))
-                text = envCurrent ? envHash : "__absent__"
+                Issue.record("Unexpected remote hash: \(script)")
+                text = "__absent__"
             }
         } else if script.contains("sha256sum") {
             text = current ? "\(composeHash)  docker-compose.yml\n\(emptyHash)  entrypoint.sh\n" : "__nodir__"
@@ -70,9 +75,9 @@ private actor SetupShell: OpsShell {
                 #expect(input == services)
                 servicesCurrent = true
             } else {
-                #expect(script.contains("$d/.env.XXXXXX"))
-                #expect(script.contains("\"$d/.env\""))
-                #expect(input == Data("GH_PAT_FIXTURE=fixture_token\n".utf8))
+                #expect(script.contains("$d/.rmj-credentials.XXXXXX"))
+                #expect(script.contains("\"$d/.rmj-credentials\""))
+                #expect(input == Data((envHash + "\n").utf8))
                 envCurrent = true
             }
             text = ""
@@ -209,9 +214,14 @@ struct DestinationSetupAcceptanceTests {
         #expect(first.steps.first { $0.name == "registration" }?.outcome == .skipped)
         let second = await subject.run()
         #expect(second.steps.first { $0.name == "runner stack" }?.outcome == .unchanged)
+        #expect(second.steps.first { $0.name == "runner stack" }?.detail == "stack and credentials are current")
         #expect(second.isReady && !second.changed)
         #expect(await shell.syncs == 1)
-        #expect(await shell.inputs == [Data("GH_PAT_FIXTURE=fixture_token\n".utf8), Data("runner-fixture\n".utf8)])
+        let inputs = await shell.inputs
+        #expect(inputs.count == 5)
+        #expect(inputs.filter { $0 == Data("GH_PAT_FIXTURE=fixture_token\n".utf8) }.count == 3)
+        #expect(inputs.filter { $0 == Data("runner-fixture\n".utf8) }.count == 1)
+        #expect(inputs.filter { $0 == Data(("b3b532516506eb4c0a48e44461b19471457fced4814bad4810cceac14cbc4ed3" + "\n").utf8) }.count == 1)
         #expect(await shell.scripts.filter { $0.contains("docker compose up") }.count == 1)
     }
 

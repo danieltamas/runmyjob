@@ -104,7 +104,7 @@ public struct RunnerCompose: Sendable, Equatable {
               RUNNER_SCOPE: \(scope)
               RUNNER_TARGET: \(name)
               RUNNER_LABELS: \(label)
-              GH_PAT: ${\(variable):-}
+              GH_PAT: ${\(variable):?run through rmj}
 
         """
     }

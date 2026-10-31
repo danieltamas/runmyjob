@@ -113,6 +113,11 @@ private func u6DeployShell(changed: String? = nil, envMatches: Bool = true,
     if let changed { hashes[changed] = "different" }
     let lines = hashes.sorted { $0.key < $1.key }.map { "\($0.value)  \($0.key)" }.joined(separator: "\n")
     return FakeShell { script, _ in
+        if script.contains("/.env'") { return u6Output("__absent__") }
+        if script.contains("/.rmj-credentials'") {
+            let fingerprint = Data((u6SHA(Data(u6Env.utf8)) + "\n").utf8)
+            return u6Output(envMatches ? u6SHA(fingerprint) : "__absent__")
+        }
         if script.contains("docker ps -a") { return u6Output(u6Containers) }
         if script.contains("sha256sum"), script.contains("| cut ") {
             if script.contains("/.rmj-services'") { return u6Output(u6SHA(Data(u6Compose.manifest.utf8))) }
@@ -134,7 +139,7 @@ struct OpsDeployAcceptanceTests {
     @Test func dryRunIsReadOnlyAndReportsExactChangesAndRunnerFields() async throws {
         let shell = try u6DeployShell()
         let report = try await u6Deployer(shell).report()
-        #expect(report.isNoOp && report.changedFiles.isEmpty && !report.envChanged)
+        #expect(report.isNoOp && report.changedFiles.isEmpty && !report.credentialsChanged)
         #expect(report.performed.isEmpty)
         #expect(report.runners.map(\.name) == ["runner-a", "runner-z"])
         #expect(report.runners.map(\.id) == ["a123", "z123"])
@@ -144,15 +149,15 @@ struct OpsDeployAcceptanceTests {
         #expect(report.runners.map(\.version) == ["2.338.2", "2.338.2"])
         #expect(shell.calls.allSatisfy { $0.directory == nil && $0.input == nil && !$0.script.contains("cat >") && !$0.script.contains("mv ") && !$0.script.contains("docker compose") })
         let empty = try u6DeployShell(envMatches: false)
-        #expect(try await u6Deployer(empty, tokens: [:]).report().envChanged == false)
-        #expect(!empty.calls.contains { $0.script.contains("/.env'") })
+        #expect(try await u6Deployer(empty, tokens: [:]).report().credentialsChanged == false)
+        #expect(!empty.calls.contains { $0.script.contains("/.rmj-credentials'") })
         let name = try #require(try u6Hashes().keys.sorted().first)
         let changed = try u6DeployShell(changed: name)
         #expect(try await u6Deployer(changed).report().changedFiles == [name])
         #expect(changed.calls.allSatisfy { $0.directory == nil && $0.input == nil && !$0.script.contains("docker compose") })
     }
 
-    @Test func deploySyncsThenAtomicallyWritesStdinEnvBeforeBuildAndUp() async throws {
+    @Test func deploySyncsThenPassesCredentialsToBuildAndUp() async throws {
         let name = try #require(try u6Hashes().keys.sorted().first)
         let shell = try u6DeployShell(changed: name, envMatches: false)
         let report = try await u6Deployer(shell).deploy()
@@ -161,19 +166,16 @@ struct OpsDeployAcceptanceTests {
         #expect(calls.filter { $0.directory != nil }.count == 1)
         #expect(calls[sync].directory == u6Stack)
         #expect(calls[sync].remote == "/home/fixture/infra/gh-runners")
-        let write = try #require(calls.firstIndex { $0.input != nil })
-        #expect(calls[write].input == Data(u6Env.utf8))
-        for fragment in ["umask 077", "mktemp", "$d/.env.", "cat >", "chmod 600", "mv", "/home/fixture/infra/gh-runners"] {
-            #expect(calls[write].script.contains(fragment))
-        }
         let generated = try #require(calls.first { $0.input == Data((u6Compose.generated ?? "").utf8) })
         #expect(generated.script.contains("docker-compose.rmj.yml"))
         let build = try #require(calls.firstIndex { $0.script.contains("docker compose build") })
         #expect(calls[build].script.contains("COMPOSE_FILE=docker-compose.yml:docker-compose.rmj.yml"))
         #expect(calls[build].script.contains("'runner-ledger' 'runner-acme'"))
         let up = try #require(calls.firstIndex { $0.script.contains("docker compose up -d") })
-        #expect(sync < write && write < build && build < up)
-        #expect(report.performed == ["synced 1 files", "wrote .env", "wrote docker-compose.rmj.yml", "docker compose build", "docker compose up -d"])
+        #expect(sync < build && build < up)
+        #expect(calls[build].input == Data(u6Env.utf8))
+        #expect(calls[up].input == Data(u6Env.utf8))
+        #expect(report.performed == ["synced 1 files", "wrote docker-compose.rmj.yml", "docker compose build", "docker compose up -d"])
         for token in u6Tokens.values { #expect(calls.allSatisfy { !$0.script.contains(token) }) }
         let unchanged = try u6DeployShell()
         #expect(try await u6Deployer(unchanged).deploy().performed.isEmpty)

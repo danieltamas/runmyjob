@@ -2,8 +2,8 @@
 
 RMJ deploys this directory to `<home>/infra/gh-runners` on a destination whose roles include `runners`
 (Settings > Destinations, or `rmj ops deploy <destination>`). It adds one ephemeral runner container per
-entry of the destination's `runner_targets` (`owner/repo` or `org:<name>`), writes `.env` from the Keychain
-tokens, and checks that every runner registered with GitHub. Nothing here is specific to a repo or company.
+entry of the destination's `runner_targets` (`owner/repo` or `org:<name>`), hands it the Keychain tokens
+over ssh (never written to a file on the box), and checks that every runner registered with GitHub. Nothing here is specific to a repo or company.
 
 ## How a job reaches a runner
 
@@ -26,7 +26,7 @@ runners: any fork can open a PR that a self-hosted runner would execute.
   stays registered offline; every start deletes this stack's own stale registrations (offline, idle, older
   than ten minutes) before registering.
 - Use `pull_request` only (never `pull_request_target`), exclude fork PRs, and keep production secrets out of
-  these workflows. The only credentials on the box are the tokens in `.env` (chmod 600).
+  these workflows. The only credentials on the box are the tokens in the runner containers' environment (the entrypoint unsets them before a job runs); there is no `.env`.
 
 ## Limits
 

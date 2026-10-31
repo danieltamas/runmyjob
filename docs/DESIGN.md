@@ -154,9 +154,9 @@ Panes, each a `SettingsCard` per group, labels left, controls right (MacMax LESS
   button.
 - **Destinations**: the list, Add (the probe flow with each check as a row: peer online, address
   verified, ssh, docker, rsync, images, home; each with its fix hint), Edit, Remove (asks once;
-  removes from `rules.json` and the remote `.env` when reachable, else says it could not), the
+  removes from `rules.json`; a PAT is never on the box to clean up), the
   runner stack per destination (deploy, targets, which PATs it holds, start, stop, drain,
-  recreate when idle), rotate a PAT (rewrites every reachable `.env`, lists the pending ones).
+  recreate when idle), rotate a PAT (saved to the Keychain; the next deploy of each destination hands it to the runners, and a deploy dry run says `credentials` changed).
 - **Hooks**: a row per harness (Claude Code, Codex, OpenCode, Hermes): `installed`, `not
   installed`, `not present on this Mac`, `shims only (cargo, just; scripts/check.sh not covered)`
   with Install and Remove.
