@@ -12,7 +12,8 @@ public enum RulesValidation {
         "destination": ["enabled", "peer_id", "ssh_alias", "tenant", "roles", "home", "max_jobs", "memory_budget",
                         "rx_defaults", "runner_stack", "runner_targets", "runner_labels", "requires"],
         "rx_defaults": ["cpus", "memory"],
-        "tenant": ["owners", "repos", "shared"],
+        "tenant": ["owners", "repos", "shared", "style", "order"],
+        "style": ["color", "pattern", "width", "size", "angle", "scatter"],
         "rule": ["name", "match", "to", "advisory", "image", "profile", "volumes", "cold_marker", "memory", "cpus", "hardening"],
         "match": ["owner", "repo", "tenant", "path", "command", "has"],
     ]
@@ -83,6 +84,14 @@ public enum RulesValidation {
             || !name.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "._-".contains($0)) }) {
             throw RulesError(message: "tenant \"\(name)\" must be lower case letters, digits, dot, dash or underscore")
         }
+        for (name, tenant) in rules.tenants.sorted(by: { $0.key < $1.key }) {
+            if let problem = tenant.style?.problem() { throw RulesError(message: "tenant \"\(name)\": style.\(problem)") }
+            var listed = Set<String>()
+            for box in tenant.order ?? [] {
+                guard rules.destinations[box]?.tenant == name else { throw RulesError(message: "tenant \"\(name)\": order lists \"\(box)\", which is not a destination of this tenant") }
+                guard listed.insert(box).inserted else { throw RulesError(message: "tenant \"\(name)\": order lists \"\(box)\" twice") }
+            }
+        }
         for (name, destination) in rules.destinations where !tenantNames.contains(destination.tenant) {
             throw RulesError(message: "destination \(name) has unknown tenant \"\(destination.tenant)\"")
         }
@@ -142,6 +151,8 @@ public enum RulesValidation {
             try each("destinations", "destination")
             try each("tenants", "tenant")
             for (index, rule) in ((object["rules"] as? [Any]) ?? []).enumerated() { try checkKeys(rule, "rule", path: "rules[\(index)]") }
+        case "tenant":
+            if let style = object["style"] { try checkKeys(style, "style", path: "\(path).style") }
         case "destination":
             if let defaults = object["rx_defaults"] { try checkKeys(defaults, "rx_defaults", path: "\(path).rx_defaults") }
         case "rule":

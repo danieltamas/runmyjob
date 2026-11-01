@@ -38,6 +38,8 @@ public struct JobRowPresentation: Sendable, Equatable {
     public let locationKind: LocationKind
     /// The tenant whose colour the location chip takes; nil for `local`.
     public let tenant: String?
+    /// A local job whose repo no tenant claims: the list offers to give it one so it can run on a box.
+    public let canTag: Bool
     public let agent: Agent
     public let stateChip: Chip
     public let branch: String?
@@ -131,6 +133,7 @@ public struct JobRowPresentation: Sendable, Equatable {
         locationKind = info != nil ? .github : isLocal ? .local : .destination
         location = Chip(text: info != nil ? "github" : job.location, tone: isLocal ? .local : .plain)
         tenant = isLocal ? nil : job.tenant
+        canTag = isLocal && info == nil && job.tenant == Tenancy.unclassified
         agent = Agent(job.agent, github: info != nil)
         branch = job.branch
         worktree = info != nil ? nil : (job.worktree.flatMap { $0.isEmpty ? nil : $0 } ?? "main checkout")

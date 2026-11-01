@@ -18,10 +18,11 @@ public struct ProcessRunner: Sendable {
 
     /// A non-zero exit is returned, not thrown: what it means is the caller's call. `environment`
     /// is added to this process's own. `started` gets the child's process group as it starts;
-    /// `output` gets each chunk of stdout and stderr as it is read, so a run that is stopped
+    /// `output` gets each chunk of stdout and stderr as it is read (`collectStdout: false` keeps none of stdout in memory, for
+    /// a session that streams for days), so a run that is stopped
     /// still shows how far it got.
     public func run(_ executable: String, _ arguments: [String], in directory: URL? = nil,
-                    environment: [String: String] = [:], input: Data? = nil, timeout: Duration,
+                    environment: [String: String] = [:], input: Data? = nil, timeout: Duration, collectStdout: Bool = true,
                     started: (@Sendable (Int32) -> Void)? = nil,
                     output: (@Sendable (Data) -> Void)? = nil) async throws -> ProcessOutput {
         let process = Process()
@@ -75,8 +76,8 @@ public struct ProcessRunner: Sendable {
         return try await withTaskCancellationHandler {
             // Both pipes drain while the child runs: a child that fills one 64 KB pipe buffer
             // while nobody reads it never exits.
-            async let out = Self.drain(stdout.fileHandleForReading, output)
-            async let err = Self.drain(stderr.fileHandleForReading, output)
+            async let out = Self.drain(stdout.fileHandleForReading, output, keep: collectStdout)
+            async let err = Self.drain(stderr.fileHandleForReading, output, keep: true)
             let (outData, errData) = await (out, err)
             for await _ in exits {}
             watchdog.cancel()
@@ -91,7 +92,7 @@ public struct ProcessRunner: Sendable {
     }
 
     /// Reads on a dispatch thread, not the cooperative pool, since reading blocks until EOF.
-    private static func drain(_ handle: FileHandle, _ output: (@Sendable (Data) -> Void)?) async -> Data {
+    private static func drain(_ handle: FileHandle, _ output: (@Sendable (Data) -> Void)?, keep: Bool) async -> Data {
         await withCheckedContinuation { continuation in
             DispatchQueue.global().async {
                 var data = Data()
@@ -99,7 +100,7 @@ public struct ProcessRunner: Sendable {
                 // past the cap so the child never blocks on a full pipe, but nothing more is kept.
                 while case let chunk = handle.availableData, !chunk.isEmpty {
                     output?(chunk)
-                    if data.count < collectedLimit { data.append(chunk.prefix(collectedLimit - data.count)) }
+                    if keep, data.count < collectedLimit { data.append(chunk.prefix(collectedLimit - data.count)) }
                 }
                 continuation.resume(returning: data)
             }

@@ -69,7 +69,9 @@ public struct DestinationLoader: Sendable {
                       now: Date) -> [DestinationCardInput] {
         rules.destinations.keys.sorted().compactMap { name in
             guard let config = rules.destinations[name], config.enabled else { return nil }
-            let availability = DestinationResolver.resolve(DestinationTarget(alias: config.sshAlias, peerID: config.peerID), in: tailnet)
+            var availability = DestinationResolver.resolve(DestinationTarget(alias: config.sshAlias, peerID: config.peerID), in: tailnet)
+            // The tailnet only says the peer is up; a box whose stream or probe fails over ssh is not answering.
+            if availability.isAvailable, let probe = probes[name], !probe.availability.isAvailable { availability = probe.availability }
             let live = jobs.filter { $0.destination == name && $0.github == nil && ($0.state == .running || $0.state == .syncing) }
             let images = Self.relevantImages(probes[name]?.images.value ?? [], routed: rules.images(for: name) + Self.profileImages(rules, destination: name, profiles: profiles))
             return DestinationCardInput(name: name, config: config, availability: availability, probe: probes[name],

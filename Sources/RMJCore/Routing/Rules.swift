@@ -57,6 +57,17 @@ public struct TenantConfig: Codable, Sendable, Equatable {
     public var repos: [String]?
     /// Not a company: its repos may run on any destination and its destinations take any repo.
     public var shared: Bool?
+    public var style: TenantStyle?
+    /// Destination names in the order jobs are tried on them: box1, box2, box3.
+    public var order: [String]?
+
+    public init(owners: [String]? = nil, repos: [String]? = nil, shared: Bool? = nil, style: TenantStyle? = nil, order: [String]? = nil) {
+        self.owners = owners
+        self.repos = repos
+        self.shared = shared
+        self.style = style
+        self.order = order
+    }
 }
 
 public struct Rule: Codable, Sendable, Equatable {

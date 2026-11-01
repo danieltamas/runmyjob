@@ -31,6 +31,7 @@ public struct PanelSnapshot: Sendable {
         var historyRows: [(JobRowPresentation.Section, [JobRowPresentation])]?
         var allRows: [(JobRowPresentation.Section, [JobRowPresentation])]?
         var cards: [DestinationCardPresentation]?
+        var repoCommands: [String: [String]]?
         var routing: RoutingPresentation?
         var routingBuilt = false
 
@@ -80,6 +81,12 @@ public struct PanelSnapshot: Sendable {
     /// Live jobs and the thirty days behind them as one list: Running and Queued first, then Today, Yesterday, Earlier.
     public var allRows: [(JobRowPresentation.Section, [JobRowPresentation])] {
         memo.cached(\.allRows) { (jobs + history).panelRows(now: now, lastOutput: lastOutput, waitingFor: waitingFor, load: load) }
+    }
+    /// The distinct commands each repo has run, over the live jobs and the thirty days of history; built once per change of the jobs.
+    public var repoCommands: [String: [String]] {
+        memo.cached(\.repoCommands) {
+            (jobs + history).reduce(into: [String: Set<String>]()) { $0[$1.repo, default: []].insert($1.command) }.mapValues { Array($0) }
+        }
     }
     public var cards: [DestinationCardPresentation] { memo.cached(\.cards) { destinations.map { DestinationCardPresentation($0, now: now) } } }
     public var routing: RoutingPresentation? { memo.routing { rulesState.map { RoutingPresentation(state: $0, jobs: jobs) } } }

@@ -255,7 +255,8 @@ extension View {
 /// A card that lifts its core on hover and opens something on click: idle, hover, pressed.
 extension Color {
     /// A hue picked from `name`, the same in every run: cards of one tenant share it. Used only as a faint wash.
-    static func wash(of name: String) -> Color {
+    @MainActor static func wash(of name: String) -> Color {
+        if let chosen = TenantPalette.shared.chosenColor(name) { return chosen }
         let sum = name.lowercased().unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF }
         return Color(hue: Double(sum % 360) / 360, saturation: 0.7, brightness: 0.8)
     }
@@ -286,6 +287,11 @@ struct HoverCard<Content: View>: View {
                         .shadow(color: accent.opacity(0.6), radius: 4)
                 }
                 content.padding(.horizontal, 12).padding(.vertical, 10)
+            }
+            .overlay {
+                if let tenant {
+                    TenantPatternView(tenant: tenant).clipShape(RoundedRectangle(cornerRadius: Radius.card - Radius.bezel, style: .continuous))
+                }
             }
         }
         .scaleEffect(pressed ? 0.99 : hovering && action != nil ? 1.006 : 1)
@@ -319,7 +325,7 @@ struct AppControls: View {
             .foregroundStyle(Theme.textSecondary)
             .contentShape(Rectangle())
         }
-        .buttonStyle(PressStyle())
+        .buttonStyle(PressStyle(lift: 0))
         .help(help)
     }
 }

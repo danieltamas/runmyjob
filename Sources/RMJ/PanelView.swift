@@ -154,7 +154,7 @@ struct PanelView: View {
                     ForEach(Array(footer.polls.enumerated()), id: \.offset) { index, poll in
                         PollAge(github: index == 0, age: poll.split(separator: " ", maxSplits: 1).last.map(String.init) ?? poll)
                     }
-                    .help("GitHub is polled every 15 s while a job is queued or running and every 120 s (300 s for quiet repos) otherwise; boxes every 30 s")
+                    .help("GitHub is polled every 15 s while a job is queued or running and every 120 s (300 s for quiet repos) otherwise. Boxes stream over ssh: the age is that of the newest frame (one every 10 s), and it grows while a box is not answering")
                     if let budget = footer.rateBudget { Text(budget).font(.meta).foregroundStyle(Theme.warn).lineLimit(1) }
                 }
             }

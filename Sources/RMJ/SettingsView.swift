@@ -33,6 +33,7 @@ struct SettingsView: View {
         case .general: GeneralPane()
         case .tailscale: TailscalePane(model: model)
         case .destinations: DestinationsPane(model: model)
+        case .tenants: TenantsPane(model: model)
         case .hooks: HooksPane()
         case .retention: RetentionPane()
         case .notifications: NotificationsPane()

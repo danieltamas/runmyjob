@@ -18,7 +18,7 @@ enum PanelTab: String, CaseIterable, Identifiable {
 @MainActor
 final class PanelModel: ObservableObject {
     @Published var snapshot: PanelSnapshot
-    @Published var tab: PanelTab = .jobs
+    @Published var tab: PanelTab = .jobs { didSet { wantFrames() } }
     @Published var settingsPane: SettingsPane = .general
     /// Set by the panel's root view: `openSettings` exists only in the environment of a view.
     var showSettingsWindow: (() -> Void)?
@@ -32,7 +32,14 @@ final class PanelModel: ObservableObject {
     /// One line shown in the footer for a few seconds: what an action did or why it did not.
     @Published var notice: String?
     /// Set by the panel view: a failure counts as seen only while the Jobs tab is actually on screen.
-    @Published var panelVisible = false
+    @Published var panelVisible = false {
+        didSet { pace.set("panel", onScreen: panelVisible); wantFrames() }
+    }
+    private func wantFrames() { bell.setFramesWanted(panelVisible && tab == .destinations) }
+    /// Set by the Destinations settings pane while it shows box readings.
+    var destinationsPaneShowing = false {
+        didSet { pace.set("settings", onScreen: destinationsPaneShowing) }
+    }
     private var githubPolledAt: Date?
     private var boxesPolledAt: Date?
     private var probing = false
@@ -42,7 +49,14 @@ final class PanelModel: ObservableObject {
     /// A route to explain, set by `Explain route` on a row.
     @Published var explain: (repo: String, command: String)?
     private var loop: Task<Void, Never>?
-    private var tailnet = TailnetMonitor()
+    private let tailnet: TailnetMonitor
+    /// One ssh session per box, read by the loop; stopped with the model.
+    private let streams: BoxStreams
+    private let pace: LivePace
+    private let bell: FrameBell
+    /// The targets the streams were last set to, to tell a destination that changed from one that stayed.
+    private var streamed: [String: DestinationTarget] = [:]
+    private var wakeObserver: NSObjectProtocol?
     /// The last good reading from each box, kept so a card can say how old it is.
     private var probes: [String: DestinationProbeResult] = [:]
     /// The last probes per box, for the sensor rates and sparklines.
@@ -107,6 +121,13 @@ final class PanelModel: ObservableObject {
 
     init(snapshot: PanelSnapshot) {
         self.snapshot = snapshot
+        let monitor = TailnetMonitor()
+        tailnet = monitor
+        let bell = FrameBell()
+        self.bell = bell
+        let boxes = BoxStreams(tailnet: { await monitor.current(maxAge: 15) }, onFrame: { _, _ in bell.ringForFrame() })
+        streams = boxes
+        pace = LivePace(streams: boxes, bell: bell)
         alerts.onUpdate = { [weak self] status in
             // A failed check changes nothing: an arrow already shown stays until a check says otherwise.
             if status != .unknown { self?.updateStatus = status }
@@ -158,6 +179,11 @@ final class PanelModel: ObservableObject {
     private func start() {
         guard loop == nil, let loader = try? PanelLoader() else { return }
         let monitor = tailnet
+        // Frames queued in a session from before the sleep would pass for current: every session starts again on wake.
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let streams = self?.streams else { return }
+            Task { await streams.stopAll() }
+        }
         backgroundLoop = Task { [background] in await background.run() }
         loop = Task { [weak self] in
             while !Task.isCancelled {
@@ -179,7 +205,7 @@ final class PanelModel: ObservableObject {
                 let busy = self?.snapshot.runningCount ?? 0 > 0
                 // Closed and idle: the menu bar icon is all that shows, so a longer beat costs nothing visible.
                 let hiddenIdle = !busy && !(self?.panelVisible ?? true)
-                try? await Task.sleep(for: .seconds(busy ? 1 : hiddenIdle ? 15 : 5))
+                await self?.pace.wait(busy ? 1 : hiddenIdle ? 15 : 5)
             }
         }
     }
@@ -209,17 +235,44 @@ final class PanelModel: ObservableObject {
         }
     }
 
+    /// What Settings reads: the tailnet from the shared monitor (a read at most 10 s old) and the box streams' newest readings.
+    func boxReadings() async -> (TailnetState, [String: DestinationProbeResult]) {
+        (await tailnet.current(maxAge: 10), probes)
+    }
+
+    /// The sparklines get one sample per this long, whatever the stream's frame rate.
+    private static let historyStep: TimeInterval = 30
+
     private func readBoxes(loader: PanelLoader, tailnet state: TailnetState) async {
+        guard let rules = loader.rules() else { return }
+        var targets = [String: DestinationTarget]()
+        for (name, config) in rules.destinations where config.enabled {
+            targets[name] = DestinationTarget(alias: config.sshAlias, peerID: config.peerID, requires: config.requires ?? [], images: rules.images(for: name))
+        }
+        // Each box streams its own readings; reading them here costs nothing and runs on every beat.
+        await streams.ensure(destinations: targets)
+        // A destination that was removed or points at another box starts from nothing: readings are never carried across.
+        for (name, target) in streamed where targets[name] != target {
+            probes[name] = nil
+            histories[name] = nil
+            runners[name] = nil
+            registrations[name] = nil
+        }
+        streamed = targets
+        let latest = await streams.latest()
+        probes = probes.filter { latest[$0.key] != nil }
+        for (name, result) in latest {
+            probes[name] = result
+            // A box that is not answering has no new counters to compare.
+            if result.availability.isAvailable, (histories[name]?.last).map({ result.probedAt.timeIntervalSince($0.probedAt) >= Self.historyStep }) ?? true {
+                histories[name] = Array(((histories[name] ?? []) + [result]).suffix(SensorChips.historyLimit))
+            }
+        }
         let wanted = tab == .destinations || snapshot.runningCount > 0
-        guard Date().timeIntervalSince(probedAt) >= (wanted ? 30 : Self.backgroundProbeInterval), let rules = loader.rules() else { return }
+        guard Date().timeIntervalSince(probedAt) >= (wanted ? 30 : Self.backgroundProbeInterval) else { return }
         probedAt = Date()
         for (name, config) in rules.destinations where config.enabled {
-            let target = DestinationTarget(alias: config.sshAlias, peerID: config.peerID, requires: config.requires ?? [], images: rules.images(for: name))
-            guard case .online(let address) = DestinationResolver.resolve(target, in: state) else { continue }
-            let result = await DestinationProbe().probe(target, tailnet: state)
-            probes[name] = result
-            // A probe that never reached the box has no counters to compare.
-            if result.availability.isAvailable { histories[name] = Array(((histories[name] ?? []) + [result]).suffix(SensorChips.historyLimit)) }
+            guard let target = targets[name], case .online(let address) = DestinationResolver.resolve(target, in: state) else { continue }
             if config.roles.contains("runners"), let list = try? await RunnerContainer.list(shell: SSHOpsShell(address: address, alias: config.sshAlias)) {
                 runners[name] = list
                 // GitHub's own view of whether those containers are registered and online; a failed read leaves the container as is.
@@ -232,8 +285,10 @@ final class PanelModel: ObservableObject {
 
     private func update(_ fresh: PanelSnapshot) {
         var next = fresh
+        if case .valid(let rules, _)? = fresh.rulesState { TenantPalette.shared.update(rules) }
         next.githubPolledAt = githubPolledAt
-        next.boxesPolledAt = boxesPolledAt ?? (probedAt == .distantPast ? nil : probedAt)
+        // The newest frame any box sent: it ages while the boxes are quiet.
+        next.boxesPolledAt = probes.values.map(\.probedAt).max() ?? boxesPolledAt
         let failures = Set(fresh.jobs.filter { $0.state == .failed || $0.state == .lost }.map(\.id))
         if tab == .jobs, panelVisible { seenFailures.formUnion(failures) }
         next.unseenFailure = !failures.isSubset(of: seenFailures)
@@ -242,11 +297,15 @@ final class PanelModel: ObservableObject {
     }
 
     private func markSeen() {
+        // Publishing the snapshot redraws the whole tab: do it only when something changes.
+        guard snapshot.unseenFailure || !seenFailures.isSuperset(of: snapshot.jobs.filter { $0.state == .failed || $0.state == .lost }.map(\.id)) else { return }
         seenFailures.formUnion(snapshot.jobs.filter { $0.state == .failed || $0.state == .lost }.map(\.id))
         snapshot.unseenFailure = false
     }
 
     deinit {
+        let streams = streams
+        Task { await streams.stopAll() }
         loop?.cancel()
         backgroundLoop?.cancel()
     }

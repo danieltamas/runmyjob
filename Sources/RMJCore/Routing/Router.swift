@@ -104,7 +104,8 @@ public struct Router: Sendable {
             }
             guard let matched else { return local("no rule", tenant: tenant) }
             // `local` ends the chain wherever it is written; what follows it is never tried.
-            chain = Array(matched.to.prefix(while: { $0 != "local" }))
+            // The tenant's order is applied to the whole written chain first, so a box ranked higher takes the place of one written before `local`.
+            chain = Array(Tenancy.ordered(matched.to, destinations: config.destinations, tenants: config.tenants).prefix(while: { $0 != "local" }))
             if chain.isEmpty { return localByRule(matched, tenant: tenant, log: &log) }
         }
 

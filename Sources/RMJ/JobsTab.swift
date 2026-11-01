@@ -13,7 +13,8 @@ struct JobsTab: View {
                        detail: "Agents' cargo test and just check land here once the hook is installed (Settings > Hooks).")
         } else {
             let sections = filter.apply(all)
-            VStack(alignment: .leading, spacing: 8) {
+            // Lazy: switching to this tab builds the rows in view, not all of the page.
+            LazyVStack(alignment: .leading, spacing: 8) {
                 filterBar
                 if sections.isEmpty {
                     EmptyState(symbol: "magnifyingglass", title: "Nothing matches", detail: "No job of the last thirty days fits this search.")
@@ -125,7 +126,8 @@ struct JobRowView: View {
             // The title takes the free width and wraps to a second line before anything truncates.
             Text(row.title).font(.rowTitle).foregroundStyle(Theme.textPrimary).fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading).layoutPriority(1)
-            Chip(text: row.location.text, symbol: row.locationKind == .local ? "laptopcomputer" : nil,
+            if row.canTag { JobTagMenu(repo: row.title, command: row.command, model: model) }
+            Chip(text: row.location.text, symbol: row.locationKind == .local ? "laptopcomputer" : row.locationKind == .destination ? "server.rack" : nil,
                  color: row.locationKind == .local ? Theme.local : Theme.tenant(row.tenant))
             Chip(text: row.stateChip.text, color: Theme.color(row.stateChip.tone), style: row.state == .running ? .filled : .tinted)
         }

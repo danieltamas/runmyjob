@@ -12,7 +12,7 @@ extension Theme {
 
 /// The panes of the Settings window, in the order of docs/DESIGN.md.
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general = "General", tailscale = "Tailscale", destinations = "Destinations", hooks = "Hooks"
+    case general = "General", tailscale = "Tailscale", destinations = "Destinations", tenants = "Tenants", hooks = "Hooks"
     case retention = "Retention", notifications = "Notifications", logs = "Log streaming", agent = "Agent access", more = "More apps", about = "About"
 
     var id: String { rawValue }
@@ -22,6 +22,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: "slider.horizontal.3"
         case .tailscale: "network"
         case .destinations: "server.rack"
+        case .tenants: "building.2"
         case .hooks: "terminal"
         case .retention: "clock.arrow.circlepath"
         case .notifications: "bell"
@@ -35,7 +36,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     @MainActor var color: Color {
         switch self {
         case .general, .agent, .logs: Theme.teal
-        case .tailscale, .destinations: Theme.ok
+        case .tailscale, .destinations, .tenants: Theme.ok
         case .hooks, .retention: Theme.warn
         case .more: Theme.teal
         case .notifications, .about: Theme.neutral
@@ -66,6 +67,7 @@ extension Theme {
     /// no tenant stays neutral.
     static func tenant(_ name: String?) -> Color {
         guard let name = name?.lowercased(), !name.isEmpty else { return unknown }
+        if let chosen = TenantPalette.shared.chosenColor(name) { return chosen }
         let sum = name.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF }
         return sum % 2 == 0 ? tenantA : tenantB
     }

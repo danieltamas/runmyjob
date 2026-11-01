@@ -9,24 +9,24 @@ final class BoxesModel: ObservableObject {
                                             rules: nil, probes: [:], now: Date())
     @Published var tailnet: TailnetState?
     @Published var refreshing = false
-    private var probes: [String: DestinationProbeResult] = [:]
 
-    func refresh() async {
-        refreshing = true
-        defer { refreshing = false }
-        let state = await TailnetState.read()
-        let rules = (try? PanelLoader())?.rules()
-        for (name, config) in rules?.destinations ?? [:] where config.enabled {
-            probes[name] = await DestinationProbe().probe(DestinationTarget(alias: config.sshAlias, peerID: config.peerID, requires: config.requires ?? [], images: rules?.images(for: name) ?? []), tailnet: state)
-        }
+    /// The list is built from what the app already knows: the shared tailnet reading (at most 10 s old) and the readings the
+    /// box streams keep. Nothing is probed here, so the list appears at once.
+    func refresh(_ model: PanelModel, quiet: Bool = false) async {
+        // The 2 s loop refreshes without the "Reading the tailnet" flicker.
+        if !quiet { refreshing = true }
+        defer { if !quiet { refreshing = false } }
+        let (state, probes) = await model.boxReadings()
         tailnet = state
-        inventory = BoxInventory(tailnet: state, rules: rules, probes: probes, now: Date())
+        inventory = BoxInventory(tailnet: state, rules: (try? PanelLoader())?.rules(), probes: probes, now: Date())
     }
 
-    func loop() async {
+    func loop(_ model: PanelModel) async {
+        var first = true
         while !Task.isCancelled {
-            await refresh()
-            try? await Task.sleep(for: .seconds(PanelModel.backgroundProbeInterval))
+            await refresh(model, quiet: !first)
+            first = false
+            try? await Task.sleep(for: .seconds(2))
         }
     }
 }
@@ -49,21 +49,26 @@ struct DestinationsPane: View {
                 Text(boxes.refreshing ? "Reading the tailnet..." : "\(viable.count) Linux machine\(viable.count == 1 ? "" : "s") on the tailnet")
                     .font(.meta).foregroundStyle(Theme.textTertiary)
                 Spacer()
-                ChipButton(title: "Refresh") { Task { await boxes.refresh() } }
+                ChipButton(title: "Refresh") { Task { await boxes.refresh(model) } }
             }
             if viable.isEmpty, !boxes.refreshing {
                 ProblemText(text: "No Linux machine on the tailnet. " + (boxes.tailnet.map { TailnetChip($0, now: Date()).text } ?? "") + " Open Tailscale and sign in.")
+            }
+            SettingsCard(title: "How boxes are watched", detail: "Each destination keeps one ssh session open over the tailnet, read-only: the box prints a small frame every 10 s, every 2 s while the panel or this page is open (load, memory, disk, sensors), docker every 60 s and slower checks every 5 minutes. A box silent for 30 s turns grey with its last readings dated. It costs the box about 0.2% of one core; nothing is installed on it.") {
+                EmptyView()
             }
             ForEach(viable, id: \.peerID) { row in
                 BoxRow(row: row, onAdd: { adding = row }, onRepair: { repairing = $0 }, onTokens: { tokens = $0 })
             }
             BoxContents()
         }
-        .task { await boxes.loop() }
+        .task { await boxes.loop(model) }
+        .onAppear { model.destinationsPaneShowing = true }
+        .onDisappear { model.destinationsPaneShowing = false }
         .sheet(item: Binding(get: { adding.map { PeerSheet(row: $0) } }, set: { adding = $0?.row })) { sheet in
             DestinationWizard(row: sheet.row, tenants: Set((try? PanelLoader())?.rules()?.tenants.keys.map { $0 } ?? []).sorted()) {
                 adding = nil
-                Task { await boxes.refresh() }
+                Task { await boxes.refresh(model) }
             }
         }
         .sheet(item: Binding(get: { tokens.map { NameSheet(name: $0) } }, set: { tokens = $0?.name })) { sheet in
@@ -72,7 +77,7 @@ struct DestinationsPane: View {
         .sheet(item: Binding(get: { repairing.map { NameSheet(name: $0) } }, set: { repairing = $0?.name })) { sheet in
             SetupRunView(name: sheet.name, tokens: [:]) {
                 repairing = nil
-                Task { await boxes.refresh() }
+                Task { await boxes.refresh(model) }
             }
         }
     }

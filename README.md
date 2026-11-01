@@ -67,6 +67,12 @@ out, an arrow appears in the panel header and the Update button in Settings, Abo
   where its build would go, without running anything.
 - **A boundary no rule crosses.** Give each company a tenant: its repos never reach another tenant's box. Tested, not
   just documented.
+- **Tenants have a look and an order.** Settings > Tenants lists each tenant, its repos and its boxes. Give a tenant a
+  colour and a pattern (stripes or dots, with width, size, angle and scatter) and its cards wear it everywhere. A
+  tenant with several boxes is a group: reorder them there and jobs try box 1, then box 2, then box 3, whatever order
+  a rule lists them in.
+- **A repo no tenant claims runs on this Mac, and says so.** Its jobs carry a "Run remote" chip: pick a tenant and the
+  repo joins it, so its next run can go to that tenant's boxes.
 - **Waiting says why.** A job queued on a busy box names the job it waits for; a GitHub job queued on your runners names
   the cause, for example a stale registration, and offers the prune button.
 - **Local always works.** No box, no tailnet, a failed sync: the command runs on your Mac and the list says why. A
@@ -134,6 +140,15 @@ The full threat model is in [SECURITY.md](SECURITY.md).
    if you like, which repos.
 4. **Run something:** in a checkout, `rmj route -- cargo test` says where it would run, and
    `rmj run -- cargo test` runs it there. The panel shows it live.
+
+## How boxes are watched
+
+RMJ keeps one read-only ssh session open to each destination, over the tailnet. The box prints a small frame
+every 10 s (every 2 s while the panel or Settings > Destinations is open; load, memory, disk, sensors), docker state every 60 s and slower checks (images, disk health) every
+5 minutes. A box that says nothing for 30 s, or that the tailnet no longer shows online, turns grey on its card with
+its last readings dated "as of HH:mm"; when it is back the card follows within seconds. The loop on the box only reads
+kernel files and prints (about 17 ms of CPU per frame, roughly 0.2% of one core), opens no port and writes no file;
+nothing is installed. Settings > Destinations says the same. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), Box streams.
 
 ## For agents
 

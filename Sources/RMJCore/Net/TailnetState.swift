@@ -64,8 +64,10 @@ public struct TailnetState: Sendable, Equatable {
             }
             return parse(data, readAt: now)
         }
+        // The installed `tailscale` wrapper first: the app's own binary started directly from a menu bar app (no terminal) opens its GUI
+        // and fails with "The Tailscale GUI failed to start", which read as the tailnet being down.
         let app = "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
-        guard let cli = FileManager.default.isExecutableFile(atPath: app) ? app : Executables.resolve("tailscale") else {
+        guard let cli = Executables.resolve("tailscale") ?? (FileManager.default.isExecutableFile(atPath: app) ? app : nil) else {
             return TailnetState(standing: .noClient, magicDNSEnabled: false, peers: [], readAt: now)
         }
         do {

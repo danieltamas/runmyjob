@@ -13,6 +13,7 @@ public actor TailnetMonitor {
     private var stored = 0
     private var active = false
     private var loop: Task<Void, Never>?
+    private var reading: Task<TailnetState, Never>?
 
     public init(reader: @escaping @Sendable () async -> TailnetState = { await TailnetState.read() }) {
         self.reader = reader
@@ -47,7 +48,13 @@ public actor TailnetMonitor {
     /// The cached state when it is younger than `maxAge`, else a fresh read.
     public func current(maxAge: TimeInterval, now: Date = Date()) async -> TailnetState {
         if let cached, cached.age(at: now) >= 0, cached.age(at: now) <= maxAge { return cached }
-        return await refresh()
+        // Callers that find the cache old together share one read: one `tailscale status`, not one per caller.
+        if let reading { return await reading.value }
+        let read = Task { await refresh() }
+        reading = read
+        let state = await read.value
+        reading = nil
+        return state
     }
 
     /// After sleep the cache describes a network that may be gone: read again now and restart the cadence.

@@ -13,6 +13,10 @@ public struct SensorChip: Sendable, Equatable {
     public let stale: String?
     /// What the value is out of: `of 36 GB`, `of 24 cores`; nil where there is no whole.
     public let detail: String?
+
+    func unknown() -> SensorChip {
+        SensorChip(id: id, label: label, value: value, tone: .unknown, series: series, spinning: spinning, stale: stale, detail: detail)
+    }
 }
 
 public enum SensorChips {
@@ -99,10 +103,10 @@ public enum SensorChips {
         return ("OK", health.smartPassed == true ? .ok : .plain, checked)
     }
 
-    static func details(_ probe: DestinationProbeResult?) -> [DestinationCardPresentation.Line] {
+    static func details(_ probe: DestinationProbeResult?, stale: String? = nil) -> [DestinationCardPresentation.Line] {
         guard let sensors = probe?.sensors else { return [] }
         var lines: [DestinationCardPresentation.Line] = []
-        func add(_ label: String, _ value: String) { lines.append(.init(label: label, value: value, tone: .plain, stale: nil)) }
+        func add(_ label: String, _ value: String) { lines.append(.init(label: label, value: value, tone: .plain, stale: stale)) }
         if let kind = kindLabel(sensors.kind) { add("system", kind) }
         if let total = sensors.swapTotalMB, total > 0, let used = sensors.swapUsedMB { add("swap", "\(size(used)) of \(size(total))") }
         if let pressure = sensors.cpuPressure { add("cpu pressure", percent(pressure)) }

@@ -112,7 +112,7 @@ public struct DestinationProbe: Sendable {
         }
     }
 
-    private static let steps: [(name: String, command: String)] = [
+    static let steps: [(name: String, command: String)] = [
         ("clock", "date +%s%N"),
         ("docker", "docker info --format '{{.ServerVersion}}'"),
         ("rsync", "v=$(rsync --version) && printf '%s\\n' \"$v\" | head -n1"),
@@ -153,7 +153,7 @@ public struct DestinationProbe: Sendable {
     static let script = script(requires: [], images: [])
 
     /// The images worth looking into, each with the programs it must hold; an absent image prints nothing.
-    private static func checks(requires: [String], images: [String]) -> [(image: String, programs: [String])] {
+    static func checks(requires: [String], images: [String]) -> [(image: String, programs: [String])] {
         images.filter(BuildEnvironments.isImageName).compactMap { image in
             let programs = BuildEnvironments.required(in: image, requires: requires)
             return programs.isEmpty ? nil : (image, programs)
@@ -163,17 +163,33 @@ public struct DestinationProbe: Sendable {
     /// The `tools` step runs each image once and lists `missing:<image>:<program>`; names that are not plain
     /// image or program names never reach the box.
     static func script(requires: [String], images: [String]) -> String {
+        (steps + toolsSteps(requires: requires, images: images)).map(wrapped).joined(separator: "\n") + "\necho @@end"
+    }
+
+    static func toolsSteps(requires: [String], images: [String]) -> [(name: String, command: String)] {
         let looks = checks(requires: requires, images: images).map {
             "if docker image inspect \($0.image) >/dev/null 2>&1; then \(BuildEnvironments.checkCommand(image: $0.image, programs: $0.programs)); fi"
         }
-        let extra = looks.isEmpty ? [] : [(name: "tools", command: looks.joined(separator: "; "))]
-        return (steps + extra).map { step in
-            "out=$(\(step.command) 2>&1); rc=$?; printf '@@\(step.name) rc=%s\\n' \"$rc\"; printf '%s\\n' \"$out\" | head -c \(bodyCap); echo"
-        }.joined(separator: "\n") + "\necho @@end"
+        return looks.isEmpty ? [] : [(name: "tools", command: looks.joined(separator: "; "))]
+    }
+
+    /// One step with its exit status in a header and its output capped.
+    static func wrapped(_ step: (name: String, command: String)) -> String {
+        "out=$(\(step.command) 2>&1); rc=$?; printf '@@\(step.name) rc=%s\\n' \"$rc\"; printf '%s\\n' \"$out\" | head -c \(bodyCap); echo"
     }
 
     /// nil unless the output has the closing marker.
     static func parse(_ text: String, address: String, probedAt now: Date, callSeconds: TimeInterval, requires: [String] = [], images: [String] = []) -> DestinationProbeResult? {
+        guard let parsed = sections(from: text) else { return nil }
+        // The clock is read first and last in the script: the call time minus the script's own time
+        // is the network, half of which separates the call's start from the first reading.
+        let scriptSeconds = parsed.number("clockend").flatMap { end in parsed.number("clock").map { (end - $0) / 1e9 } } ?? 0
+        let clockReference = now.addingTimeInterval(max(0, callSeconds - max(0, scriptSeconds)) / 2)
+        return result(from: parsed, address: address, probedAt: now, clockReference: clockReference, requires: requires, images: images)
+    }
+
+    /// The sections of one frame; nil unless it has the closing marker. A section's body is capped in lines and bytes.
+    static func sections(from text: String) -> ParsedSections? {
         let lineCap = 200
         var bytes = [String: Int](), truncated = Set<String>()
         var sections = [String: (rc: Int, lines: [String])](), current: String?, ended = false
@@ -188,32 +204,35 @@ public struct DestinationProbe: Sendable {
                 if sections[current]!.lines.count < lineCap && bytes[current]! < bodyCap { sections[current]!.lines.append(line) } else { truncated.insert(current) }
             }
         }
-        guard ended else { return nil }
+        return ended ? ParsedSections(sections: sections, truncated: truncated) : nil
+    }
+
+    /// What the box said, as a result. `clockReference` is when the box's first clock reading was taken, on this Mac's clock.
+    static func result(from parsed: ParsedSections, address: String, probedAt now: Date, clockReference: Date,
+                       requires: [String] = [], images: [String] = []) -> DestinationProbeResult {
+        let sections = parsed.sections, truncated = parsed.truncated
         func lines(_ key: String) -> [String] { (sections[key]?.lines ?? []).map { UntrustedText.clean($0) }.filter { !$0.isEmpty } }
+        func at(_ key: String) -> Date { parsed.arrivals[key] ?? now }
         func reading(_ key: String) -> Reading<String> {
-            guard let section = sections[key] else { return .unavailable("not reported", at: now) }
+            guard let section = sections[key] else { return .unavailable("not reported", at: at(key)) }
             let first = lines(key).first
             switch (section.rc, first) {
-            case (0, let value?): return .ok(value, at: now)
-            case (127, _): return .unavailable("not installed", at: now)
-            case (0, nil): return .unavailable("no output", at: now)
-            default: return .failed(first ?? "exit \(section.rc)", at: now)
+            case (0, let value?): return .ok(value, at: at(key))
+            case (127, _): return .unavailable("not installed", at: at(key))
+            case (0, nil): return .unavailable("no output", at: at(key))
+            default: return .failed(first ?? "exit \(section.rc)", at: at(key))
             }
         }
         func list<T: Sendable & Equatable>(_ key: String, _ transform: (String) -> T?) -> Reading<[T]> {
             // A sample cut at the line cap is not presented as the whole.
-            if truncated.contains(key) { return .failed("output truncated", at: now) }
+            if truncated.contains(key) { return .failed("output truncated", at: at(key)) }
             switch reading(key) {
-            case .failed(let reason, _): return .failed(reason, at: now)
-            case .unavailable(let reason, _) where sections[key]?.rc != 0 || reason == "not reported": return .unavailable(reason, at: now)
-            default: return .ok(lines(key).compactMap(transform), at: now)
+            case .failed(let reason, _): return .failed(reason, at: at(key))
+            case .unavailable(let reason, _) where sections[key]?.rc != 0 || reason == "not reported": return .unavailable(reason, at: at(key))
+            default: return .ok(lines(key).compactMap(transform), at: at(key))
             }
         }
         func number(_ key: String) -> Double? { reading(key).value.flatMap(Double.init).flatMap { $0.isFinite ? $0 : nil } }
-        // The clock is read first and last in the script: the call time minus the script's own time
-        // is the network, half of which separates the call's start from the first reading.
-        let scriptSeconds = number("clockend").flatMap { end in number("clock").map { (end - $0) / 1e9 } } ?? 0
-        let clockReference = now.addingTimeInterval(max(0, callSeconds - max(0, scriptSeconds)) / 2)
         let clock = number("clock").map { ($0 / 1_000_000 - clockReference.timeIntervalSince1970 * 1000).rounded() }
             .flatMap { abs($0) < 1e12 ? Int($0) : nil }
         let disk = reading("disk").value.map { $0.split(separator: " ").compactMap { Int($0) } }.flatMap { $0.count == 2 ? ($0[0], $0[1]) : nil }

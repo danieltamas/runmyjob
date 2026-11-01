@@ -124,6 +124,9 @@ the unit's final diff, re-run after the last fix; "prints 0" means no P0, P1 or 
 | U12 | Release: signing, installer, README media, first public release | U0-U11 | scripts, README, docs, SECURITY |
 | U13 | s1 as the first destination added through the app (Globex; execution after the owner's go) | U6, U7 | docs, LOG |
 | U14 | Agent runs: `rmj agent run` (Claude Code in a container on a box, access token only, result as a branch) | U4 | Core Run, CLI, Support/box, tests |
+| U16 | Box streams: one long-lived ssh session per box replaces the app's probe timer; silence turns a box grey | U7 | Core Net, Panel, App PanelModel, tests |
+| U17 | Tenants: colour and pattern per tenant, Tenants pane, box order inside a group, tag a local job's repo from the job list | U2, U7 | Core Routing, Panel, App Settings and Jobs, tests |
+| U18 | Live sensors: 2 s frames while the panel is open, pushed to the UI | U16 | Core Net, App PanelModel, tests |
 
 ## Units
 
@@ -619,6 +622,150 @@ Acceptance:
 /goal: the acceptance tests green; live: `rmj agent run --to ai-eu-1 -- "<task>"` on a Rust or Node repo returns a branch whose
 diff is the task, the box holds no token afterwards (`grep` of /dev/shm, the home and docker inspect finds nothing), and
 `$SCRATCH/review-out.md` prints 0 P0-P2.
+
+### U16. Box streams
+One long-lived ssh session per enabled destination replaces the app's periodic probe. The box's own shell loop prints a probe
+frame every `frameInterval`; the Mac reads frames as they arrive. A box that stops answering goes grey on its own, without
+any probe having to fail. Nothing is installed on the box: the loop is the argv of the ssh command, it reads only, it opens
+no port. The one-shot `DestinationProbe.probe` stays for the CLI (`rmj route`) and the runner scaler, which are not the app.
+
+Interfaces (RMJCore/Net, public unless noted):
+- `protocol StreamTransport: Sendable { func stream(address: String, alias: String, script: String, output: @escaping @Sendable (Data) -> Void) async throws -> Int32 }`:
+  runs `script` on the box, hands every stdout chunk to `output`, returns the exit status when the session ends, throws on
+  cancellation. `SSHStreamTransport` is the real one: `SSH.arguments` (so StrictHostKeyChecking, ControlMaster and
+  `ClearAllForwardings=yes` apply) through `ProcessRunner.run` with a very long timeout and its `output` callback; cancelling the task
+  kills the ssh. No second process primitive.
+- `DestinationProbe.streamScript(requires:images:interval: Int, heavyEvery: Int, rareEvery: Int) -> String`: a counter loop
+  `i=0; while :; do <steps>; echo @@end; i=$((i+1)); sleep <interval>; done`, one frame per turn, the existing step commands and
+  `@@name rc=N` section format unchanged. The steps run in three tiers so the stream is cheap on the box: the **light** tier
+  (every turn; kernel files only, no docker, no dmesg, no smartctl: clock, mem, memtotal, load, boot, uptime, cpustat, swap, net,
+  psi, hwmon, disk, clockend) and, when `i % heavyEvery == 0`, the **heavy** tier (docker, containers: `docker info`, `docker ps` and `docker stats --no-stream`),
+  and, when `i % rareEvery == 0`, the **rare** tier (rsync, images, nproc, diskhealth, osname, virt, tools). Turn 0 runs all three, so the
+  first frame is complete. Defaults: interval 10 s, heavyEvery 6 (60 s), rareEvery 30 (5 min). A box whose `sleep` is missing, or whose shell exits,
+  ends the session (exit status reported). The box-side loop dies with the session: when ssh goes away the next write to the closed pipe ends it.
+- `DestinationProbe.lightSections` / `heavySections` / `rareSections` (static, `[String]`): the tiers by section name; a frame is *valid* when it
+  carries every light section and `@@end`. `SectionCache` (internal, a struct): `merge(frame sections)` keeps the newest copy of each section with the time it arrived;
+  a heavy or rare section not refreshed within three times its period is dropped (the reading becomes unknown, never an old value presented as current).
+  The result is built from the merged sections by the same code `DestinationProbe.parse` uses (refactor `parse` into `sections(from:)` + `result(from:)`; the one-shot probe keeps working).
+- `FrameAssembler` (internal): feeds on arbitrary chunks, yields complete frames (text from the first `@@` header up to and
+  including `@@end`); bytes before the first header are dropped; a frame larger than 256 KB is dropped and the assembler
+  resynchronises at the next `@@clock`; a chunk boundary anywhere (inside a header, a UTF-8 sequence, `@@end`) changes nothing.
+- `actor BoxStream`: `init(target: DestinationTarget, transport: StreamTransport, tailnet: @escaping @Sendable () async -> TailnetState,
+  clock: @escaping @Sendable () -> Date = Date.init, timing: BoxStream.Timing = .standard, sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+  onResult: @escaping @Sendable (DestinationProbeResult) -> Void)`, `start()`, `stop() async`, `var latest: DestinationProbeResult? { get }`.
+  `BoxStream.Timing { frameInterval: Int (10), heavyEvery: Int (6), rareEvery: Int (30), silence: Duration (30 s: three intervals), backoff: [Duration] (2, 4, 8, 16, 32, 60 s, then 60 s), jitter: Double (0.2) }`.
+- `DestinationProbeResult.unreachable(_ availability: Availability) -> DestinationProbeResult` (public): the same readings and the
+  same `probedAt`, with the availability replaced. That is how an offline card keeps showing the last good numbers, dated.
+- `actor BoxStreams`: `ensure(destinations: [String: DestinationTarget])` starts a stream per target, stops the streams of
+  removed or disabled ones, restarts one whose target changed (alias, address-relevant fields, requires, images);
+  `latest() -> [String: DestinationProbeResult]`; `stopAll() async`. The app's PanelModel owns one and reads `latest()`.
+
+Behaviour (acceptance lines, each testable with a fake transport, a fake clock and an instant `sleep`):
+1. Before every connect, `DestinationResolver.resolve(target, in: await tailnet())` must give `.online(address)`; the transport
+   is called only with that address. Not online: no connection is made, `onResult` gets the last good result `.unreachable(thatAvailability)`
+   (or `.without(thatAvailability)` when there never was one), and the stream retries when the tailnet is looked at again.
+   An address is re-verified on every reconnect, never cached.
+2. Each complete frame is merged into the section cache and the result built from it (`probedAt` = the clock at the frame's arrival). A frame that
+   is not valid (a light section missing, a bad header) is dropped and counts as no frame: it is never published as a healthy reading.
+   A light-only frame after a full one keeps the box's containers, images and disk health (until three periods old), and updates load, memory, network and the rest.
+   A frame published sets `latest` and calls `onResult` with an `.online` result.
+3. The session ending (any exit status, an error, a transport throw) publishes the last good result `.unreachable("ssh exit N: ...")`
+   at once, then reconnects after the next backoff delay plus or minus `jitter` (the delay list resets after a frame is received).
+   No connect happens while a previous session is still running.
+4. Silence: no complete frame for `silence` while the session is up (a hung ssh, a stopped box that never closed the TCP
+   connection) publishes `.unreachable("no frames for 30 s")`, cancels the session and reconnects as in 3. The check runs on the
+   same clock, so the test controls it.
+5. The tailnet saying the destination is no longer online while a session runs cancels the session at the next check and
+   publishes the resolver's availability (offline, unreachable or rejected) with the last good readings.
+6. `stop()` cancels the session and any pending reconnect, and publishes nothing afterwards.
+7. The script the transport receives is `DestinationProbe.streamScript(requires: target.requires, images: target.images, interval: timing.frameInterval, heavyEvery: timing.heavyEvery, rareEvery: timing.rareEvery)`,
+   and contains no `sudo`, no `nc`, no `socat`, no listening construct (`-l`), and writes nothing to the box's disk (no redirection to a file other than `/dev/null`).
+8. Display rule for an offline box (`DestinationCardPresentation`, RMJCore/Panel): when the availability is not online, every
+   capacity line, every sensor chip and every runner line is drawn in the unknown tone, the "as of HH:mm" marker is present
+   (the probe is older than one poll interval by definition), and a runner line's state reads "unknown, box offline". Counts
+   that are measurements (`rx 0 of 3`) are never shown as a fresh zero: the last good reading, grey, or nothing.
+9. PanelModel starts and stops streams from the rules (a destination added, removed, disabled, edited) and does no
+   `DestinationProbe().probe` for a box it streams; the 30 s / 5 min probe timers are gone from the app. The scaler and the CLI still probe.
+10. Cost (very cheap is a requirement, not a hope). On the box: the light tier starts at most 14 short commands per turn (a command being a
+    process the shell spawns) and none of `docker`, `dmesg`, `smartctl`, `lsblk`, `findmnt`, `systemd-detect-virt`; `docker` appears only in the heavy and rare tiers;
+    one frame of the light tier is under 3 KB of output; the heavy tier is the only place `docker stats` runs, once per `heavyEvery` turns. On the Mac:
+    a frame is parsed once and merged (100 light frames merge in under 100 ms in a test), a published result that equals the previous one in everything but
+    `probedAt` does not call `onResult` more than once a minute, a frame costs PanelModel nothing until the loop's own beat reads it (no rebuild or database
+    write per frame; the beat is the existing 15 s while hidden and idle), and no timer runs per box except the single watch beat (one second).
+
+Measured by: the unit tests above; `scripts/acceptance.sh perf` with every destination streaming stays under 0.3 percent CPU idle;
+and the live scenario recorded in LOG.md: with the app open and a box up, power the box off; the card pill, runner dots and
+tiles go grey within `silence` + 5 s (command, timestamps, observed delay); and the cost, measured live and recorded: the
+box's CPU time for one light frame and for one heavy frame (`time sh -c '<script turn>'`), and the app's CPU over ten minutes of streaming one box and all boxes.
+
+### U17. Tenants: style, group order, tagging a job
+A tenant is a company or a person's own set of repos; its boxes form a group. Settings shows them, the owner colours and orders them,
+and a local job whose repo no tenant claims gets a tenant from the job list. All of it is `rules.json`; nothing new is stored.
+
+Interfaces (RMJCore/Routing, public unless noted):
+- `TenantConfig` gains `style: TenantStyle?` and `order: [String]?` (both optional; old files load unchanged). `TenantStyle`: `color: String?`
+  (`#RRGGBB`), `pattern: String?` (`none`, `stripes`, `dots`), `width: Double?` (px of a stripe or the diameter of a dot, 1...32),
+  `size: Double?` (px between stripes or dot centres, 4...64), `angle: Double?` (degrees, -180...180), `scatter: Double?` (0...1, how far
+  each dot or stripe is moved off the regular grid; 0 is regular). `TenantStyle.resolved(for tenant: String) -> TenantStyle.Resolved`
+  fills every field: colour `TenantStyle.defaultColor(for:)` (a stable `#RRGGBB` from the name, the same hue the app's wash uses today),
+  pattern `none`, width 3, size 10, angle 45, scatter 0.
+- Validation (`RulesValidation`, unknown keys stay refused): `tenant` allows `style` and `order`; `style` allows the six keys above; a
+  colour that is not `#` plus six hex digits, a pattern outside the three, or a number out of range fails the load with a message
+  naming the tenant and the field; `order` may list only destinations whose `tenant` is this tenant, each once.
+- Priority: a rule's chain is tried in the order written, except that the destinations of one tenant that appear in the chain take, among
+  the places they occupy, the order of that tenant's `order` (those not listed follow, in their written order). `Tenancy.ordered(_ chain:
+  [String], destinations: [String: DestinationConfig], tenants: [String: TenantConfig]) -> [String]`; `Router.route` uses it before it
+  tries the chain, so box1, box2, box3 are tried in that order and the explain lists them in the order tried. `local` still ends the chain.
+- `TenantOverview.summaries(_ rules: Rules) -> [TenantOverview.Summary]`, sorted by name: `name`, `shared`, `owners`, `repos`,
+  `destinations: [String]` (the tenant's destinations in priority order: `order` first, the rest by name), `isGroup` (two or more
+  destinations), `style: TenantStyle.Resolved`.
+- `TenantEditing.apply(_ change: Change, home: RMJHome, expected: String? = nil) throws` as `RuleEditing.apply` (read, change, validate,
+  write, refuse when the file changed): `.style(tenant, TenantStyle?)` (nil removes it), `.order(tenant, [String])`,
+  `.assign(repo: String, tenant: String)`. `assign` adds the lower-cased `owner/name` to `tenants.<tenant>.repos` unless the tenant
+  already claims it; it throws `Failure` when the tenant does not exist, when the repo is not `owner/name`, or when another tenant's `repos`
+  already claims it. `TenantEditing.assignable(_ rules: Rules) -> [String]`: the tenants that have at least one enabled destination.
+- `JobRowPresentation.canTag: Bool`: true for a job that ran locally, is not a GitHub job, and whose tenant is `unclassified`; its repo is
+  `title`.
+
+Acceptance:
+- A file with no `style`/`order` loads and routes as before; `resolved(for:)` is stable across calls and runs, and two different names get
+  different default colours.
+- Each invalid style field and each invalid `order` (unknown destination, another tenant's destination, a duplicate) fails the load.
+- Chain `[box3, box1, box2]` for tenant `acme` with `order: [box1, box2, box3]` is tried box1, box2, box3; a chain that mixes tenants keeps
+  the other tenant's destinations in their own places; the tenant deny and `local` termination are unchanged.
+- `summaries` marks a tenant with two destinations as a group and lists them in priority order; a tenant with none lists none.
+- `apply(.style)` and `.order` persist and round-trip through `RulesStore.load`; `.assign` makes `Tenancy.resolve` return the tenant for that
+  repo, the next `Router.route` of it is no longer "unclassified repo", and the other tenants' tables are untouched; an `.assign` to a repo
+  another tenant claims, or to a missing tenant, changes no byte of the file.
+- `canTag` is true only in the case above (false for a remote job, a GitHub job, a classified local job).
+
+/goal: the acceptance tests green and `scripts/check.sh` ok; live: in the installed app a tenant gets a colour and a stripe pattern in
+Settings, the Tenants pane lists each tenant with its boxes in order, and an unclassified local job's tag control assigns its repo.
+
+### U18. Live sensors
+While the panel or a box card is on screen, boxes report every 2 s and the card moves with them; hidden, they report every 10 s as in U16.
+Mechanism: the box-side loop already prints a light frame per interval; the Mac asks a stream to change its interval, the stream restarts its
+session on the existing ssh connection (about 20 ms), and each frame reaches the UI as it arrives.
+
+Interfaces (RMJCore/Net):
+- `BoxStream.setFrameInterval(_ seconds: Int) async`: no effect when equal to the current one; otherwise the session ends and a new one starts
+  at once (no backoff, the delay list is untouched), with the script built for the new interval. `BoxStream.Timing.frameInterval` is the
+  interval a stream starts with. `heavyEvery` and `rareEvery` are re-derived so heavy stays at 60 s and rare at 300 s (`60 / interval`,
+  `300 / interval`, at least 1). `silence` is three intervals (at least 30 s).
+- `BoxStreams.setFrameInterval(_:) async` for every stream, and streams started afterwards use it.
+- `BoxStreams.init(... onFrame: (@Sendable (String, DestinationProbeResult) -> Void)? = nil)`: called for every published result, without the
+  60 s repeat suppression that `onResult` has; PanelModel uses it to refresh at once.
+- The app: panel visible or the Destinations settings pane showing, 2 s; otherwise 10 s. Sensor values, clock and network rates move at that pace;
+  the history sample step (30 s) and the ledger writes do not change.
+
+Acceptance:
+- `setFrameInterval(2)` ends the running session and the transport's next script has `sleep 2` and heavy every 30 turns; the same value twice
+  starts no second session; no backoff delay is slept between the two sessions.
+- A frame received at interval 2 reaches `onFrame` and `latest` before the next frame; two equal frames reach `onFrame` twice.
+- The cost: the light tier unchanged (U16 line 10); at 2 s the Mac parses 100 frames in under 200 ms in a test.
+
+/goal: acceptance tests green and `scripts/check.sh` ok; live: the installed app, panel open, shows a card's CPU and network values change at about
+2 s (timestamps recorded in LOG.md), and 10 s again 5 s after the panel closes; the app's CPU while live is recorded.
 
 ## Quality criteria (every unit)
 

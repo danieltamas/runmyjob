@@ -79,6 +79,21 @@ public enum Tenancy {
         return Resolution(tenant: unclassified, how: "owner \(owner) is in no tenant")
     }
 
+    /// The chain with each tenant's destinations in that tenant's `order`: they keep the places they occupy and take
+    /// the listed ones first, the rest after in their written order. Other entries (and `local`) stay where they are.
+    public static func ordered(_ chain: [String], destinations: [String: DestinationConfig], tenants: [String: TenantConfig]) -> [String] {
+        var result = chain
+        for (name, tenant) in tenants {
+            guard let order = tenant.order, !order.isEmpty else { continue }
+            let slots = chain.indices.filter { destinations[chain[$0]]?.tenant == name }
+            let rank = { (box: String) in order.firstIndex(of: box) ?? order.count }
+            // Sorted by rank, then by written position, so unlisted boxes follow in the order they were written.
+            let sorted = slots.sorted { (rank(chain[$0]), $0) < (rank(chain[$1]), $1) }.map { chain[$0] }
+            for (slot, box) in zip(slots, sorted) { result[slot] = box }
+        }
+        return result
+    }
+
     /// Two tenants never mix: a repo of one is denied a destination of another. A tenant that is not declared, or that
     /// is declared `shared` (one person's own repos), is not a company and is never denied.
     public static func denies(repoTenant: String, destinationTenant: String, tenants: [String: TenantConfig]) -> Bool {

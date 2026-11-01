@@ -69,6 +69,8 @@ public struct DestinationCardPresentation: Sendable, Equatable {
         public let tone: JobRowPresentation.Tone
         /// `as of 14:43` when the reading is older than its poll interval.
         public let stale: String?
+
+        func unknown() -> Line { Line(label: label, value: value, tone: .unknown, stale: stale) }
     }
 
     public struct RunnerLine: Sendable, Equatable {
@@ -110,11 +112,12 @@ public struct DestinationCardPresentation: Sendable, Equatable {
         roles = input.config.roles
         state = Self.stateChip(input, now: now)
         let online = input.availability.isAvailable
-        let stale = Self.staleMarker(input, now: now)
-        capacity = online || input.probe != nil ? Self.capacity(input, stale: stale) : []
+        let stale = Self.staleMarker(input, now: now, online: online)
         let shown = online || input.probe != nil
-        sensors = shown ? SensorChips.chips(input, stale: stale) : []
-        sensorDetails = shown ? SensorChips.details(input.probe) : []
+        // A box that is not answering keeps its last readings, dated and greyed: they are history, not state.
+        capacity = shown ? Self.capacity(input, stale: stale).map { online ? $0 : $0.unknown() } : []
+        sensors = shown ? SensorChips.chips(input, stale: stale).map { online ? $0 : $0.unknown() } : []
+        sensorDetails = shown ? SensorChips.details(input.probe, stale: stale).map { online ? $0 : $0.unknown() } : []
         systemKind = shown ? input.probe?.sensors.flatMap { SensorChips.kindLabel($0.kind) } : nil
         rxContainers = input.rxJobs.filter { $0.state == .running || $0.state == .syncing }.map(\.id)
         runners = input.runners.map { Self.runnerLine($0, latest: input.latestRunner, online: online) }
@@ -153,8 +156,8 @@ public struct DestinationCardPresentation: Sendable, Equatable {
         }
     }
 
-    static func staleMarker(_ input: DestinationCardInput, now: Date) -> String? {
-        guard let probe = input.probe, now.timeIntervalSince(probe.probedAt) > input.pollInterval else { return nil }
+    static func staleMarker(_ input: DestinationCardInput, now: Date, online: Bool = true) -> String? {
+        guard let probe = input.probe, !online || now.timeIntervalSince(probe.probedAt) > input.pollInterval else { return nil }
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
         return "as of \(formatter.string(from: probe.probedAt))"

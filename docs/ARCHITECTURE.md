@@ -6,7 +6,7 @@
 Package.swift            swift-tools-version 6.0, macOS 14 deployment target, no dependencies
 Sources/RMJCore/         everything testable; imports Foundation, Darwin, Security (Keychain),
                          SQLite3; never SwiftUI or AppKit
-  Net/                   TailnetState (tailscale status --json), DestinationProbe, BoxSensors (the probe's
+  Net/                   TailnetState (tailscale status --json), DestinationProbe, BoxStream + BoxStreams (one ssh session per box), BoxSensors (the probe's
                          counters and SensorRates), SSH (argv builder, fixed options, address
                          verification), Rsync
   Routing/               RulesFile (Codable JSON, strict validation, atomic save), Router, Explain,
@@ -76,7 +76,7 @@ The contract is in docs/ROUTING.md, "The rx contract".
                        +----> Database actor (ledger: job, job_event) <---- Reconcile (.rc/.meta)
                                            ^
  GitHub pollers (runs, jobs, runners) -----+----> QueueReason, Rerun
- Destination probes, Heartbeat ------------+
+ Box streams (ssh), Heartbeat ---------------+
                                            |
                      AppStore (@MainActor) ---> PanelView (Jobs, Destinations, Routing, History)
                                            |
@@ -95,7 +95,7 @@ CLI's writes within a second. When the app is not running, `rmj run` still recor
 | Poller | Active (panel open or a job running) | Idle |
 |--------|--------------------------------------|------|
 | TailnetState | 10 s | 60 s |
-| DestinationProbe (per destination) | 30 s | 5 min |
+| Box stream (per destination; one ssh session, a light frame every 10 s, docker every 60 s, rare checks every 5 min; 30 s of silence marks the box unreachable) | 10 s | 10 s |
 | GitHub runs and jobs | 15 s | 120 s (300 s for a repo with no run in a day) |
 | GitHub runners | 60 s | 10 min |
 | Local log tail (one running rx job) | streaming | none |
@@ -206,6 +206,42 @@ The probe's `diskhealth` step reads what a plain user can: read-only mount, inod
 log is readable) and SMART where `smartctl` runs without sudo. Fields it cannot read stay nil; the card's "Disk health" tile
 says what was checked, so OK on a disk without SMART is never shown as a SMART pass. ssh to a box carries
 `ForwardAgent=no`, `ForwardX11=no` and `ClearAllForwardings=yes` whatever `~/.ssh/config` says for the alias.
+
+### Tenant style, order and tagging (U17)
+
+`TenantConfig` (rules.json `tenants.<name>`) carries `style` (`TenantStyle`: colour `#RRGGBB`, pattern `none|stripes|dots`,
+width, size, angle, scatter; each optional, `resolved(for:)` fills defaults, validated on load in `RulesValidation`) and `order`
+(destination names of that tenant, each once). `Tenancy.ordered` applies a tenant's `order` to the whole written chain of the
+matched rule before `local` cuts it: the tenant's boxes keep the slots they occupy and take the listed order, unlisted ones follow
+in written order. `TenantOverview.summaries` is what Settings > Tenants reads (groups = two or more boxes, priority order).
+`TenantEditing.apply` is the one writer for style, order and `assign(repo:tenant:)` (read, change, `RulesStore.save` with the
+fingerprint, so a stale pane refuses). `JobRowPresentation.canTag` marks a local, non-GitHub job whose tenant is `unclassified`;
+the Jobs row offers the tenants that have an enabled box (`TenantEditing.assignable`) and `assign` adds the repo to that tenant.
+The app reads styles through `TenantPalette` (set from every loaded snapshot): `Color.wash(of:)`, `Theme.tenant` and `TenantPatternView`
+(a Canvas, marks placed by a hash of their grid cell so scatter is stable between draws).
+
+### Live pace (U18)
+
+`BoxStream.setFrameInterval` re-derives the timing (`Timing.paced`: heavy stays 60 s, rare 300 s, silence three frames, 30 s at
+least) and ends the running session through an `AsyncStream` signal; the supervisor reconnects at once, no backoff, over the same
+ssh mux socket. `BoxStreams.onFrame` fires for every published result (no 60 s repeat suppression). In the app `LivePace` holds
+the viewers (`panel`, `settings`): any on screen means 2 s, none for 5 s means 10 s; its `wait` replaces the loop's sleep and
+returns early on a frame, never sooner than 1 s after it started.
+
+### Box streams (U16)
+
+The app keeps one long-lived ssh session per enabled destination (`BoxStream`, owned by `BoxStreams` in `PanelModel`)
+instead of probing it. The session runs a read-only loop on the box (`DestinationProbe.streamScript`) that prints a frame
+per turn: `@@name rc=N` sections closed by `@@end`. Tiers by cost: light every 10 s (kernel files read with shell
+builtins, three processes at most), heavy every 60 s (docker), rare every 5 min (images, disk health, tool checks). The first
+turn runs all three. `FrameAssembler` cuts frames (256 KB limit, resynchronises at the next `@@clock `), `SectionCache`
+merges them (a light frame needs every light section; heavy and rare sections stay for three periods and are then unknown,
+never shown as current). A box that stops talking for 30 s, a tailnet that no longer shows it online (looked at once a
+second) or an ssh that ends all publish `unreachable` with the last readings kept and dated. The address is resolved from
+the tailnet before every connect; reconnects back off 2, 4, 8, 16, 32, 60 s with 20% jitter and reset after a frame. Equal
+results are announced once a minute at most. Measured on ai-gamerina-eu: 0.5 s of box CPU over 29 light-tier frames at a
+1 s interval, so about 0.2% of one core at the real 10 s rhythm. The panel adds a history sample every 30 s. Runner lists,
+the scaler and the CLI still use one-shot probes.
 
 ## Log streaming
 
