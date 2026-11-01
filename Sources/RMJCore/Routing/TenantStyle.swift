@@ -69,10 +69,15 @@ public struct TenantStyle: Codable, Sendable, Equatable {
     func problem() -> String? {
         if let color, color.range(of: "^#[0-9A-Fa-f]{6}$", options: .regularExpression) == nil { return "color \"\(color)\" is not #RRGGBB" }
         if let pattern, !Self.patterns.contains(pattern) { return "pattern \"\(pattern)\" is not none, stripes or dots" }
-        for (field, value, range) in [("width", width, Self.widthRange), ("size", size, Self.sizeRange),
-                                      ("angle", angle, Self.angleRange), ("scatter", scatter, Self.scatterRange)] {
-            if let value, !range.contains(value) { return "\(field) \(value) is outside \(range.lowerBound)...\(range.upperBound)" }
-        }
-        return nil
+        return Self.outside("width", width, Self.widthRange) ?? Self.outside("size", size, Self.sizeRange)
+            ?? Self.outside("angle", angle, Self.angleRange) ?? Self.outside("scatter", scatter, Self.scatterRange)
+    }
+
+    /// Kept out of line: inlined four times into `problem()`, the x86 slice scheduled its comparisons differently from one
+    /// build to the next, and the release build is verified byte for byte.
+    @inline(never)
+    private static func outside(_ field: String, _ value: Double?, _ range: ClosedRange<Double>) -> String? {
+        guard let value, !range.contains(value) else { return nil }
+        return "\(field) \(value) is outside \(range.lowerBound)...\(range.upperBound)"
     }
 }
