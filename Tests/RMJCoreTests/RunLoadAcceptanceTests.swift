@@ -37,7 +37,7 @@ struct RunLoadAcceptanceTests {
         let reopened = try Database(url: f.directory.appendingPathComponent("ledger.sqlite"))
         let version = try await reopened.query("SELECT version FROM schema_version")
         #expect(version.count == 1)
-        #expect(version.first?["version"]?.intValue == 2)
+        #expect(version.first?["version"]?.intValue == 3)
         let columns = try await reopened.query("PRAGMA table_info(job)")
         #expect(columns.first { $0["name"]?.textValue == "avg_cpu" }?["type"]?.textValue == "REAL")
         #expect(columns.first { $0["name"]?.textValue == "avg_memory_bytes" }?["type"]?.textValue == "INTEGER")

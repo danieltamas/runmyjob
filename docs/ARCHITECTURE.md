@@ -263,6 +263,17 @@ CLI (while the run lasts, plus 3 s) or in the app (`AppBackground`, every 5 s). 
 `~/.rmj/log-sinks.json`, read by the panel glyph and by `rmj sinks`. Failed GitHub job logs are shipped
 once archived (`LogStreamerArchive`). Secrets: Keychain `rmj.sink.<id>`.
 
+## The cleaner
+
+`rmj clean` (`Sources/RMJCore/Clean/`) removes build scratch and idle agent worktrees named in `~/.rmj/clean.json`
+(absent: `~/.cache/rmj-*` after 72 h; one bad target rejects the file). `Cleaner.run(apply:)` walks each target:
+a `scratch` glob match is removed when it is a real directory, no process holds it (one `lsof` per run) and nothing
+in the tree changed within `after_hours`; a `worktrees` candidate under `<repo>/.worktrees` must be registered,
+not the main worktree, idle, clean, and have every commit on a remote, then goes through `git worktree remove`
+(never `--force`, branch kept). Links are never followed. Without `--apply` nothing is touched. The trail: a
+`clean.pending` marker before each removal, one line per item in `~/.rmj/logs/clean.log` after it, and
+`clean_run`/`clean_item` rows in the ledger (schema step 3), all pruned at 90 days by `Retention`.
+
 ## Keychain
 
 Items `rmj.pat.<target>` (one per runner target), created from Settings > Destinations with the

@@ -9,6 +9,21 @@ enum Schema {
     static let steps: [[String]] = [first, [
         "ALTER TABLE job ADD COLUMN avg_cpu REAL",
         "ALTER TABLE job ADD COLUMN avg_memory_bytes INTEGER",
+    ], [
+        """
+        CREATE TABLE IF NOT EXISTS clean_run (
+            id TEXT PRIMARY KEY, started_at INTEGER NOT NULL, finished_at INTEGER NOT NULL,
+            apply INTEGER NOT NULL, freed_bytes INTEGER NOT NULL, problem TEXT
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS clean_run_started ON clean_run (started_at)",
+        """
+        CREATE TABLE IF NOT EXISTS clean_item (
+            run_id TEXT NOT NULL REFERENCES clean_run (id), path TEXT NOT NULL, kind TEXT NOT NULL,
+            action TEXT NOT NULL, reason TEXT NOT NULL, bytes INTEGER NOT NULL, at INTEGER NOT NULL
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS clean_item_run ON clean_item (run_id)",
     ]]
 
     private static let first = [

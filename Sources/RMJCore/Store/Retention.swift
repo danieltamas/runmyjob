@@ -46,6 +46,8 @@ public struct Retention: Sendable {
         }
         let sampleCutoff = Ledger.ms(now.addingTimeInterval(-Double(Self.sampleDays) * 86_400))
         try await database.execute("DELETE FROM destination_sample WHERE at < ?", [.int(sampleCutoff)])
+        try await ledger.pruneCleanRuns(now: now)
+        CleanLog(directory: archive.directory).prune(before: now.addingTimeInterval(-Double(Ledger.cleanRunDays) * 86_400))
         try await sweepOrphans(now: now)
         return expired
     }
@@ -62,7 +64,9 @@ public struct Retention: Sendable {
             }
         }
         let files = (try? FileManager.default.contentsOfDirectory(at: archive.directory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        for file in files where !known.contains(file.lastPathComponent) {
+        // The cleaner's trail lives beside the job logs and is not one of them.
+        let trail: Set = [CleanLog.fileName, CleanLog.pendingName, CleanLog.lockName]
+        for file in files where !known.contains(file.lastPathComponent) && !trail.contains(file.lastPathComponent) {
             let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
             let age = now.timeIntervalSince(modified)
             if file.pathExtension == "part" {

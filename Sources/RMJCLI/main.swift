@@ -29,6 +29,9 @@ if arguments.first == "sinks" {
 if arguments.first == "agent", arguments.dropFirst().first == "run" {
     exit(await AgentRunCommand.run(arguments: Array(arguments.dropFirst(2))))
 }
+if arguments.first == "clean" {
+    exit(await CleanCommand.run(arguments: Array(arguments.dropFirst())))
+}
 if arguments.first == "mcp" {
     exit(await MCPServe.run())
 }

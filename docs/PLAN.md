@@ -129,6 +129,7 @@ the unit's final diff, re-run after the last fix; "prints 0" means no P0, P1 or 
 | U18 | Live sensors: 2 s frames while the panel is open, pushed to the UI | U16 | Core Net, App PanelModel, tests |
 | U19 | Agent runs: --model, --session-id and --resume with a per-repo session directory on the box | U14 | Core Run, box script, tests |
 | U20 | Agent runs: --attach, --append-system-prompt-file, --json result | U19 | Core Run, box script, tests |
+| U21 | The cleaner: `rmj clean` removes stale scratch and agent worktrees, with a log and ledger trail | U20 | Core Clean, Store, CLI, tests |
 
 ## Units
 
@@ -885,3 +886,66 @@ Acceptance:
 - `BoxAssets.script` prunes `.attach` entries older than 1 day and `discardSecret` removes `.attach/<ulid>`.
 
 /goal: `scripts/check.sh` passes; live, `rmj agent run --require-box --json --attach <dir with a file> --append-system-prompt-file <file> -- "<read the attached file and answer with its first line>"` prints the first line in `final` of the last JSON line, and the box shows no `.attach/<ulid>` afterwards.
+
+## U21. The cleaner: stale build output and agent worktrees, with a trail
+
+Builds, agent worktrees and SwiftPM/cargo scratch directories pile up under `/private/tmp`, `~/.cache` and a repo's
+`.worktrees` (measured 2026-11-01: about 65 GB in three days across Bton, Lexito and Makerless). RMJ records the runs it
+starts but cleans nothing after them. `rmj clean` removes what is provably dead, and says what it did and why.
+
+Interfaces (all in RMJCore, `Sources/RMJCore/Clean/`):
+- `~/.rmj/clean.json` (mode 0600 like the other files; absent means the defaults): `{"targets": [{"kind": "scratch" | "worktrees",
+  "path": "...", "after_hours": 48}]}`. `scratch`: `path` is a glob of directories (`~` expands; wildcard in the last component
+  only, e.g. `/private/tmp/bton-*`, `~/.cache/rmj-*`). `worktrees`: `path` is a git repository; its linked worktrees under
+  `<repo>/.worktrees` are the candidates. `after_hours` 1 to 8760, default 48. Unknown kinds, relative paths, `/`, a path
+  shorter than three components, a glob outside its last component, a malformed file: the whole file is rejected
+  (`CleanConfig.load` returns the defaults and `problem` says why; `rmj clean` prints it and exits 2). Defaults:
+  `scratch ~/.cache/rmj-*` at 72 hours.
+- `CleanConfig` (Codable, `targets: [CleanTarget]`, `static func load(home: RMJHome) -> (config: CleanConfig, problem: String?)`),
+  `CleanTarget(kind:path:afterHours:)`.
+- `Cleaner(ledger: Ledger, config: CleanConfig, logDirectory: URL, now: @Sendable () -> Date = Date.init,
+  inUse: (@Sendable (String) async -> Bool)? = nil)` and `func run(apply: Bool) async -> CleanRun`. It never
+  throws: a failure becomes an item.
+- `CleanRun` (`id` ULID, `startedAt`, `finishedAt`, `apply`, `items: [CleanItem]`, `freedBytes`, `problem: String?`);
+  `CleanItem` (`path`, `kind`, `action`: `removed` | `would_remove` | `skipped` | `failed`, `reason`, `bytes`).
+- Ledger tables (schema step 3): `clean_run (id, started_at, finished_at, apply, freed_bytes, problem)` and `clean_item (run_id,
+  path, kind, action, reason, bytes, at)`; `Ledger.cleanRuns(limit:)`, `Ledger.cleanItems(run:)`; `Retention.prune` drops
+  runs and items older than 90 days.
+- `rmj clean [--apply] [--json]`, `rmj clean log [--run <id>] [--json]`. Without `--apply` nothing is touched: every
+  candidate is reported as `would_remove` or `skipped` with its reason. Exit 0 when the run finished, 1 when an item
+  failed, 2 for a usage error or a rejected config. `--json` prints one object `{"run","apply","freed_bytes","items":[...]}`.
+  `clean log` lists the last 20 runs (id, time, mode, freed, counts) or the items of one run.
+
+Rules (each one a skip reason when it fails; a check that errors counts as failed: fail closed):
+- A `scratch` candidate is a real directory (not a symlink, not a file) matching the glob, a direct child of the glob's parent.
+  Skipped when: any entry inside, at any depth, was modified within `after_hours` ("recent"); a process holds it or anything
+  below it as its current directory ("in use", via `lsof -d cwd` for the real `inUse`); it cannot be listed.
+- A `worktrees` candidate is a directory directly under `<repo>/.worktrees` that `git worktree list --porcelain` of the repo
+  registers. Skipped when: it is the main worktree; `git status --porcelain` is not empty ("dirty"); `git rev-list HEAD --not
+  --remotes` is not empty ("unpushed commits"; a detached HEAD counts); its index or HEAD changed within `after_hours`
+  ("recent"); in use as above; git fails ("git failed: ..."). Removal is `git worktree remove <path>` without `--force`, then
+  `git worktree prune`; the branch is never deleted. Directories under `.worktrees` that git does not register are reported as
+  skipped "not a registered worktree" and never touched.
+- Removal never follows a symlink out of the candidate; a path that resolves outside the target's root is skipped.
+- Every item writes, in order: the path to `<logDirectory>/clean.pending` (before a removal only), the removal, one tab-separated
+  line to `<logDirectory>/clean.log` (ISO time, run id, action, kind, bytes, path, reason), the ledger rows when the run ends.
+  A crash mid-removal leaves the pending marker, which the next run logs as `interrupted` and clears. A log that cannot be
+  written stops further removals (the rest fail with "not removed"). Paths and reasons in the log are cleaned with
+  `UntrustedText.clean`. `inUse` is optional: nil takes one `lsof -d cwd,txt` snapshot per run, and a snapshot that fails
+  counts everything as in use. `Retention` leaves `clean.log` and `clean.pending` alone and prunes log lines older than 90 days.
+
+Acceptance (real temp directories and real `git`; a bare repo as the remote):
+- Config: defaults when absent; every rejected shape; `~` expansion; glob only in the last component.
+- Scratch: an old directory is `would_remove` in a dry run and untouched, `removed` with apply and its bytes counted; a directory
+  with one recent file deep inside is skipped "recent"; a symlink and a plain file matching the glob are skipped; `inUse`
+  true skips; a directory outside the glob parent is never visited.
+- Worktrees: clean, pushed and old is removed and its branch survives; dirty, unpushed, detached-unpushed, recent, main,
+  unregistered, in use are each skipped with the stated reason and still exist afterwards; a failing git (not a repository)
+  is `failed`/skipped with a reason and removes nothing.
+- Trace: every item is in `clean.log` and in the ledger with the same action and bytes; `rmj clean log` and `--run` print them;
+  `Retention` drops 90-day-old runs only.
+- CLI (the `RMJCLI` product): dry run prints and removes nothing, `--apply` removes and exits 0, a failure exits 1, a bad
+  config exits 2, `--json` is one valid object.
+
+/goal: `scripts/check.sh` passes; live, `rmj clean` on this Mac lists the leftovers of 2026-11-01 as `would_remove` with
+sizes, `rmj clean --apply` removes only those, `rmj clean log` shows the run, and `~/.rmj/logs/clean.log` has one line per item.

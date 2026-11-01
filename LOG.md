@@ -1,5 +1,10 @@
 # LOG
 
+## Unreleased
+
+- `rmj clean` removes stale build scratch and idle agent worktrees that pile up after builds (65 GB in three days was measured), and says what it did and why. It is a dry run unless you pass `--apply`. Targets are in `~/.rmj/clean.json` (default: `~/.cache/rmj-*` idle for 72 hours); a worktree goes only when it is clean, has every commit on a remote, was idle, and nothing runs in it. Every item is written to `~/.rmj/logs/clean.log` and to the history (`rmj clean log [--run <id>]`, kept 90 days).
+- Verified live: dry run listed the leftovers, `--apply` removed two build directories (135 MB) and logged them. Not verified: removal of a real Lexito worktree (none qualified: all were dirty, unpushed, unregistered or recent).
+
 ## 0.11.0 (2026-11-01)
 
 - `rmj agent run --attach <dir>` (up to four, 50 MiB in all) makes a directory of the Mac readable inside the agent's container, on a box or locally; `--append-system-prompt-file <path>` adds a system prompt from a file; `--json` prints one JSON object as the last line (`job`, `location`, `branch`, `exit`, `final`) so a caller reads the answer without parsing the log.
