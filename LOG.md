@@ -1,10 +1,11 @@
 # LOG
 
-## Unreleased
+## 0.11.0 (2026-11-01)
 
 - `rmj agent run --attach <dir>` (up to four, 50 MiB in all) makes a directory of the Mac readable inside the agent's container, on a box or locally; `--append-system-prompt-file <path>` adds a system prompt from a file; `--json` prints one JSON object as the last line (`job`, `location`, `branch`, `exit`, `final`) so a caller reads the answer without parsing the log.
 - `rmj --version` prints the app version instead of "nothing to run yet".
-- Not verified: the live attach run on a box (needs a valid Claude login on the Mac).
+- An agent run reads the Claude login from the Keychain item of the user's account first; a stale item with another account name no longer wins and no longer makes runs refuse with "claude login expires soon".
+- Verified live: an attached file read by Claude on a box, `--json` result, attachment removed afterwards. Not verified: a Codex run's `final` on a box (null).
 
 ## 0.10.0 (2026-11-01)
 
