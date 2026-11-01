@@ -81,6 +81,14 @@ waiter() {
     [ "${args[i]}" = --entrypoint ] && break
     if [ "${args[i]}" = --user ] && [ "${args[i+1]:-}" = @box ]; then args[i+1]="$(id -u):$(id -g)"; break; fi
   done
+  # An agent conversation's directory is the box user's and private: docker would create a missing mount source as root.
+  # Only a host path of exactly this shape is created, and only among docker's own options.
+  for ((i = 0; i < ${#args[@]}; i++)); do
+    [ "${args[i]}" = --entrypoint ] && break
+    if [ "${args[i]}" = -v ] && [[ ${args[i+1]:-} =~ ^(${HOME}/rx/\.sessions/[0-9a-f]{16}): ]]; then
+      (umask 077; mkdir -p -m 700 "${BASH_REMATCH[1]}")
+    fi
+  done
   # An agent run (it staged a login) never lets docker keep the output: the json log would hold an echoed token on the
   # box's disk. The container is created without a log driver and attached, so only the redacted copy below exists.
   local agent=0 start=(docker run -d) drv=()
@@ -128,6 +136,9 @@ secret_dir() { printf '%s/rmj-%s' "${XDG_RUNTIME_DIR:-/dev/shm}" "$1"; }
 prune() {
   for ext in argv launch log rc meta wait cancelled abort pid hold release; do find "$logs" -name "*.$ext" -mtime +30 -delete 2>/dev/null; done
   find /dev/shm "${XDG_RUNTIME_DIR:-/dev/shm}" -maxdepth 1 -name 'rmj-*' -mtime +1 -exec rm -rf {} + 2>/dev/null
+  # A conversation's transcripts are kept 14 days after their last write; a directory left empty goes with them.
+  find "$HOME/rx/.sessions" -type f -mtime +14 -delete 2>/dev/null
+  find "$HOME/rx/.sessions" -mindepth 1 -type d -empty -mtime +14 -delete 2>/dev/null
 }
 
 case "${1:-}" in

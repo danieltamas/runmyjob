@@ -181,7 +181,7 @@ public struct RunEngine: Sendable {
             case .success(let session): agent = session
             case .failure(let fallback): return .fallback(fallback.reason)
             }
-            boxJob = agent?.decorate(boxJob, home: config.home, slots: config.agentSlots) ?? boxJob
+            boxJob = agent?.decorate(boxJob, home: config.home, slots: config.agentSlots, repo: request.identity.slug) ?? boxJob
         }
         let client = boxes.factory.client(destination: destination, address: address, config: config)
         var stage = "destination unreachable"

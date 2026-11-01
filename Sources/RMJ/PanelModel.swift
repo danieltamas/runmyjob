@@ -33,7 +33,25 @@ final class PanelModel: ObservableObject {
     @Published var notice: String?
     /// Set by the panel view: a failure counts as seen only while the Jobs tab is actually on screen.
     @Published var panelVisible = false {
-        didSet { pace.set("panel", onScreen: panelVisible); wantFrames() }
+        didSet { pace.set("panel", onScreen: panelVisible); wantFrames(); if panelVisible { startReading() } }
+    }
+    /// The panel just opened on readings older than the next frame: the cards show placeholders until a box reports or a few seconds pass.
+    @Published var reading = false
+    private var readingSince: Date?
+    private var readingTimeout: Task<Void, Never>?
+
+    private func startReading() {
+        // The readings, not the snapshot, are what ages: a box reports every 10 s while the panel is closed.
+        guard probes.values.contains(where: { $0.availability.isAvailable && Date().timeIntervalSince($0.probedAt) > 3 }) else { return }
+        readingSince = Date()
+        reading = true
+        readingTimeout?.cancel()
+        readingTimeout = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            self?.reading = false
+            self?.readingSince = nil
+        }
     }
     private func wantFrames() { bell.setFramesWanted(panelVisible && tab == .destinations) }
     /// Set by the Destinations settings pane while it shows box readings.
@@ -172,7 +190,7 @@ final class PanelModel: ObservableObject {
             guard let self, let loader = try? PanelLoader() else { return }
             let state = await tailnet.current(maxAge: 10)
             guard let fresh = try? await loader.snapshot(tailnet: state, probes: probes, histories: histories, runners: runners, registrations: registrations) else { return }
-            update(fresh)
+            update(fresh, force: true)
         }
     }
 
@@ -283,7 +301,20 @@ final class PanelModel: ObservableObject {
         }
     }
 
-    private func update(_ fresh: PanelSnapshot) {
+    /// What the menu bar shows and the jobs' states: while the panel is closed, the snapshot is published only when this changes.
+    private var publishedSignature = ""
+    private var publishedAt = Date.distantPast
+
+    private func update(_ fresh: PanelSnapshot, force: Bool = false) {
+        // Closed, a running job would otherwise relayout the hidden panel every second for nothing.
+        let signature = "\(fresh.icon)|\(fresh.longestRunning.map(PanelFormat.duration) ?? "")|" + fresh.jobs.map { "\($0.id)\($0.state)" }.joined(separator: ",")
+        let hidden = !panelVisible && !destinationsPaneShowing
+        if hidden, !force, signature == publishedSignature, Date().timeIntervalSince(publishedAt) < 15 {
+            alerts.handle(fresh)
+            return
+        }
+        publishedSignature = signature
+        publishedAt = Date()
         var next = fresh
         if case .valid(let rules, _)? = fresh.rulesState { TenantPalette.shared.update(rules) }
         next.githubPolledAt = githubPolledAt
@@ -293,6 +324,12 @@ final class PanelModel: ObservableObject {
         if tab == .jobs, panelVisible { seenFailures.formUnion(failures) }
         next.unseenFailure = !failures.isSubset(of: seenFailures)
         snapshot = next
+        // Every box that answers has reported since the opening: the placeholders end.
+        if let since = readingSince, probes.values.filter({ $0.availability.isAvailable }).allSatisfy({ $0.probedAt > since }) {
+            reading = false
+            readingSince = nil
+            readingTimeout?.cancel()
+        }
         alerts.handle(fresh)
     }
 

@@ -2,6 +2,17 @@ import Foundation
 
 /// A coding agent's task: what `rmj agent run` hands the engine besides the command that would run it on the Mac.
 public struct AgentTask: Sendable, Equatable {
+    /// A Claude conversation the caller starts (`--session-id`) or continues (`--resume`); its transcript is kept on the box between runs.
+    public struct Session: Sendable, Equatable {
+        public var id: String
+        public var resume: Bool
+
+        public init(id: String, resume: Bool) {
+            self.id = id
+            self.resume = resume
+        }
+    }
+
     public var harness: AgentHarness
     public var prompt: String
     /// Skip the harness's permission prompts. Only ever applied in the container: the box is the boundary, the Mac is not.
@@ -10,14 +21,19 @@ public struct AgentTask: Sendable, Equatable {
     public var timeoutSeconds: Int
     /// A run that cannot get a box fails instead of falling back to this Mac.
     public var requireBox: Bool
+    public var model: String?
+    public var session: Session?
 
-    public init(harness: AgentHarness = .claude, prompt: String, unattended: Bool = false, allowedTools: [String] = [], timeoutSeconds: Int = 3600, requireBox: Bool = false) {
+    public init(harness: AgentHarness = .claude, prompt: String, unattended: Bool = false, allowedTools: [String] = [], timeoutSeconds: Int = 3600,
+                requireBox: Bool = false, model: String? = nil, session: Session? = nil) {
         self.harness = harness
         self.prompt = prompt
         self.unattended = unattended
         self.allowedTools = allowedTools
         self.timeoutSeconds = timeoutSeconds
         self.requireBox = requireBox
+        self.model = model
+        self.session = session
     }
 
     /// The box variant is bounded by `timeout` inside the container, so a hung harness ends even if the Mac is gone.
@@ -25,13 +41,15 @@ public struct AgentTask: Sendable, Equatable {
         switch harness {
         case .claude:
             let tools = allowedTools.isEmpty ? [] : ["--allowedTools"] + allowedTools
-            guard onBox else { return ["claude", "-p", prompt] + tools }
+            let chosen = (model.map { ["--model", $0] } ?? []) + (session.map { [$0.resume ? "--resume" : "--session-id", $0.id] } ?? [])
+            guard onBox else { return ["claude", "-p", prompt] + chosen + tools }
             // stream-json makes every tool call visible while the run goes on; AgentStream turns it back into lines.
-            return deadline + ["claude", "-p", prompt, "--output-format", "stream-json", "--verbose", "--permission-mode", unattended ? "bypassPermissions" : "acceptEdits"] + tools
+            return deadline + ["claude", "-p", prompt, "--output-format", "stream-json", "--verbose", "--permission-mode", unattended ? "bypassPermissions" : "acceptEdits"] + chosen + tools
         case .codex:
-            guard onBox else { return ["codex", "exec", prompt] }
+            let chosen = model.map { ["-m", $0] } ?? []
+            guard onBox else { return ["codex", "exec"] + chosen + [prompt] }
             // Codex's own sandbox cannot start inside the locked-down container; the container is the boundary.
-            return deadline + ["codex", "exec", "--skip-git-repo-check", "--ephemeral", "--dangerously-bypass-approvals-and-sandbox", prompt]
+            return deadline + ["codex", "exec"] + chosen + ["--skip-git-repo-check", "--ephemeral", "--dangerously-bypass-approvals-and-sandbox", prompt]
         }
     }
 

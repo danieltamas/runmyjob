@@ -8,6 +8,8 @@ struct TenantsPane: View {
     @State private var problem: String?
     /// The fingerprint of the file as this pane displays it: an edit made on top of a file changed since is refused.
     @State private var shown: String?
+    /// The tenant being edited: one card open at a time, the rest collapsed to a line.
+    @State private var opened: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -20,7 +22,8 @@ struct TenantsPane: View {
                     ProblemText(text: "No tenant yet. Add a destination and name its tenant, or classify a repo from the Jobs list.")
                 }
                 ForEach(summaries, id: \.name) { summary in
-                    TenantCard(summary: summary, raw: rules.tenants[summary.name]?.style ?? TenantStyle(), onChange: apply)
+                    TenantCard(summary: summary, raw: rules.tenants[summary.name]?.style ?? TenantStyle(), open: opened == summary.name,
+                               toggle: { withAnimation(Motion.spring) { opened = opened == summary.name ? nil : summary.name } }, onChange: apply)
                 }
             } else {
                 ProblemText(text: "The rules file is invalid; fix it in Routing first.")
@@ -38,6 +41,7 @@ struct TenantsPane: View {
         do {
             try TenantEditing.apply(change, home: RMJHome(), expected: shown)
             problem = nil
+            if case .remove = change { opened = nil }
         } catch {
             problem = "\(error)"
         }
@@ -49,14 +53,50 @@ struct TenantsPane: View {
 private struct TenantCard: View {
     let summary: TenantOverview.Summary
     let raw: TenantStyle
+    let open: Bool
+    let toggle: () -> Void
     let onChange: (TenantEditing.Change) -> Void
     @State private var draft = TenantStyle()
     @State private var saving: Task<Void, Never>?
+    @State private var confirmingRemoval = false
 
     private var resolved: TenantStyle.Resolved { draft.resolved(for: summary.name) }
 
     var body: some View {
-        SettingsCard(title: summary.name, detail: describe) {
+        Bezel {
+            VStack(alignment: .leading, spacing: 0) {
+                Button(action: toggle) { header }.buttonStyle(PressStyle(lift: 0))
+                Collapsible(open: open) { editor.padding(.top, 14) }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .onAppear { draft = raw }
+        .onChange(of: open) { _, now in if !now { confirmingRemoval = false } }
+    }
+
+    /// The collapsed card: the tenant's mark in its own colour and pattern, its name, what it holds, and the way in.
+    private var header: some View {
+        HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color(hex: resolved.color).opacity(0.3))
+                .overlay { TenantPatternView(tenant: summary.name, style: resolved).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous)) }
+                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color(hex: resolved.color), lineWidth: 1))
+                .frame(width: 22, height: 22)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(summary.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.textPrimary)
+                Text(describe).font(.meta).foregroundStyle(Theme.textTertiary).lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.textTertiary)
+                .rotationEffect(.degrees(open ? 90 : 0))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+    private var editor: some View {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 18) {
                 VStack(alignment: .leading, spacing: 8) { styleControls }
                 VStack(alignment: .leading, spacing: 10) {
@@ -65,8 +105,22 @@ private struct TenantCard: View {
                 }
                 .frame(width: 210)
             }
+            removal
         }
-        .onAppear { draft = raw }
+    }
+
+    /// Removing asks twice. The repos of the tenant fall back to "no tenant" and run on this Mac; a box or rule that still names it refuses.
+    private var removal: some View {
+        HStack(spacing: 8) {
+            Spacer()
+            if confirmingRemoval {
+                Text("Its repos will run on this Mac.").font(.meta).foregroundStyle(Theme.textTertiary)
+                ChipButton(title: "Keep") { confirmingRemoval = false }
+                ChipButton(title: "Remove \(summary.name)", destructive: true) { confirmingRemoval = false; onChange(.remove(summary.name)) }
+            } else {
+                ChipButton(title: "Remove tenant") { confirmingRemoval = true }
+            }
+        }
     }
 
     private var describe: String {

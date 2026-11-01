@@ -65,3 +65,36 @@ struct TenantAssignableCommandTests {
         #expect(TenantEditing.assignable(Self.rules, command: "scripts/check.sh", repoCommands: ["swift test"]).isEmpty)
     }
 }
+
+/// Found live: a tenant could not be removed.
+struct TenantRemovalTests {
+    private func home(_ json: String) throws -> RMJHome {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("rmj-remove-\(UUID().uuidString)")
+        let home = RMJHome(environment: ["RMJ_HOME": root.path])
+        try home.prepare()
+        let store = RulesStore(home: home)
+        try Data(json.utf8).write(to: store.url)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: store.url.path)
+        return home
+    }
+
+    private static let box = #""b1": { "tenant": "acme", "ssh_alias": "b1", "enabled": true, "peer_id": "p1", "roles": ["rx"], "home": "/home/b", "max_jobs": 2, "memory_budget": "8g", "rx_defaults": { "cpus": 2, "memory": "4g" } }"#
+
+    @Test func aTenantWithoutBoxesOrRulesIsRemoved() throws {
+        let home = try home(#"{ "destinations": { \#(Self.box) }, "tenants": { "acme": { "owners": ["acme"] }, "old": { "repos": ["x/y"] } }, "rules": [] }"#)
+        defer { try? FileManager.default.removeItem(at: home.url) }
+        try TenantEditing.apply(.remove("old"), home: home)
+        guard case .valid(let rules, _) = RulesStore(home: home).load() else { Issue.record("rules invalid"); return }
+        #expect(rules.tenants.keys.sorted() == ["acme"])
+    }
+
+    @Test func aTenantWithABoxOrARuleIsRefusedAndTheFileIsUntouched() throws {
+        let home = try home(#"{ "destinations": { \#(Self.box) }, "tenants": { "acme": { "owners": ["acme"] }, "old": { "repos": ["x/y"] } }, "rules": [ { "name": "r", "match": { "tenant": ["old"] }, "to": ["b1"] } ] }"#)
+        defer { try? FileManager.default.removeItem(at: home.url) }
+        let before = try Data(contentsOf: RulesStore(home: home).url)
+        #expect(throws: TenantEditing.Failure.self) { try TenantEditing.apply(.remove("acme"), home: home) }
+        #expect(throws: TenantEditing.Failure.self) { try TenantEditing.apply(.remove("old"), home: home) }
+        #expect(throws: TenantEditing.Failure.self) { try TenantEditing.apply(.remove("nope"), home: home) }
+        #expect(try Data(contentsOf: RulesStore(home: home).url) == before)
+    }
+}

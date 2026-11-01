@@ -127,6 +127,7 @@ the unit's final diff, re-run after the last fix; "prints 0" means no P0, P1 or 
 | U16 | Box streams: one long-lived ssh session per box replaces the app's probe timer; silence turns a box grey | U7 | Core Net, Panel, App PanelModel, tests |
 | U17 | Tenants: colour and pattern per tenant, Tenants pane, box order inside a group, tag a local job's repo from the job list | U2, U7 | Core Routing, Panel, App Settings and Jobs, tests |
 | U18 | Live sensors: 2 s frames while the panel is open, pushed to the UI | U16 | Core Net, App PanelModel, tests |
+| U19 | Agent runs: --model, --session-id and --resume with a per-repo session directory on the box | U14 | Core Run, box script, tests |
 
 ## Units
 
@@ -805,3 +806,35 @@ Acceptance:
 - **D8. Rules file format.** JSON (Codable, Foundation only), decided 2026-10-27 after the review:
   a TOML parser with no packages is v1 infrastructure the app does not need; the app edits the
   file anyway.
+
+## U19. Agent runs: sessions and model
+
+`rmj agent run` gains what a caller such as Bton needs to run its own `claude -p` calls on a box (docs/BTON-INTEGRATION.md,
+gaps 1 and 3). Gap 2 (push and `gh` inside a run) stays out by design: the box holds no push credential, the result is
+the branch `rmj/agent/<id>`, and the caller pushes it from the Mac.
+
+Interfaces:
+- `rmj agent run [--model <name>] [--session-id <uuid> | --resume <uuid>] ...`. `--model` is `^[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,63}$`
+  and works for both harnesses (`claude --model`, `codex exec -m`). The session flags are Claude only, take a UUID (any case,
+  stored lowercase), and are exclusive with each other; anything else is the usage error (exit 2).
+- `AgentTask` gains `model: String?` and `session: AgentTask.Session?` (`id: String`, `resume: Bool`).
+  `argv` appends `--model <m>` and `--session-id <id>` or `--resume <id>` to the claude command (local and box variants) and
+  `-m <m>` right after `exec` for codex.
+- Persistence: a run with a session mounts the box directory `<home>/rx/.sessions/<key>` at `/tmp/.claude/projects`
+  (the container's HOME is its tmpfs `/tmp`), where `<key>` is the first 16 hex characters of the SHA-256 of the repo slug
+  (the Mac worktree path when the repo has no slug). The login never lands there (it stays at `$HOME/.claude/.credentials.json`
+  on the tmpfs). `rx-run.sh` creates the directory (mode 0700, the box user's) before `docker create` and `prune` deletes
+  session files older than 14 days. A run without a session mounts nothing.
+
+Acceptance:
+- Parsing: the flags above, each invalid value and each exclusive pair is exit 2 with the usage line; defaults unchanged.
+- argv: the exact claude and codex vectors with and without model and session, local and on the box; a prompt that looks like
+  a flag stays one argument.
+- `decorate` mounts the sessions directory only when a session is set; the same repo gives the same directory, two repos
+  differ, the host path is under `<home>/rx/.sessions/`, nothing else of the home is mounted, the credentials path is
+  unchanged.
+- `BoxAssets.script` creates `.sessions/<key>` with mode 700 for such a volume before `docker create`, only for a path under
+  `$HOME/rx/.sessions/`, and prunes session files older than 14 days.
+
+/goal: `scripts/check.sh` passes, a live `rmj agent run --require-box --session-id <uuid> -- "remember the word kiwi"` then
+`--resume <uuid> -- "what word?"` answers kiwi (on the box the claude rule names), and the box shows no credentials file under `~/rx/.sessions`.

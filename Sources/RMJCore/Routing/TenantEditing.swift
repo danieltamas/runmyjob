@@ -32,6 +32,8 @@ public enum TenantEditing {
         case order(String, [String])
         /// Adds `owner/name` to the tenant's repos so the repo can run on its boxes from the next run.
         case assign(repo: String, tenant: String)
+        /// Deletes the tenant. Its repos become unclassified and run on this Mac; boxes and rules that still name it block the removal.
+        case remove(String)
     }
 
     public struct Failure: Error, CustomStringConvertible {
@@ -78,6 +80,14 @@ public enum TenantEditing {
             rules.tenants[tenant]?.order = boxes.isEmpty ? nil : boxes
         case .assign(let repo, let tenant):
             try assign(repo.lowercased(), to: tenant, in: &rules)
+        case .remove(let tenant):
+            guard rules.tenants[tenant] != nil else { throw Failure(description: "no tenant \(tenant)") }
+            let boxes = rules.destinations.filter { $0.value.tenant == tenant }.keys.sorted()
+            if !boxes.isEmpty { throw Failure(description: "\(tenant) still has \(boxes.count == 1 ? "a box" : "boxes"): \(boxes.joined(separator: ", ")). Move or remove \(boxes.count == 1 ? "it" : "them") first") }
+            if let rule = rules.rules.first(where: { $0.match.tenant?.contains(tenant) == true }) {
+                throw Failure(description: "the rule \"\(rule.name)\" matches \(tenant). Edit the rule first")
+            }
+            rules.tenants[tenant] = nil
         }
         do { try store.save(rules, expected: fingerprint) } catch let failure as RulesStore.Failure {
             switch failure {

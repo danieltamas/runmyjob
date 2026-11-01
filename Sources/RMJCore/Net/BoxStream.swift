@@ -89,6 +89,8 @@ public actor BoxStream {
     private var gotFrame = false
     private var assembler = FrameAssembler()
     private var cache = SectionCache()
+    /// Set when the session ended only to change its pace: the next one keeps the sections the box already sent.
+    private var carryCache = false
 
     public init(target: DestinationTarget, transport: StreamTransport, tailnet: @escaping @Sendable () async -> TailnetState,
                 clock: @escaping @Sendable () -> Date = Date.init, timing: Timing = .standard,
@@ -143,6 +145,8 @@ public actor BoxStream {
                 case .moved, .repaced, .cancelled: break
                 }
                 // A pace change that landed while the session was ending asks for the new session at once, as one that ended it would.
+                // A new pace is the same box on the same address: what it reported stays until it is replaced or ages out.
+                if case .repaced = ending { carryCache = true }
                 switch ending { case .moved, .repaced: continue; default: if sessionPace != pace { continue } }
             } else {
                 publishDown(availability)
@@ -177,7 +181,8 @@ public actor BoxStream {
     private func session(address: String) async -> Ending {
         self.address = address
         assembler = FrameAssembler()
-        cache = SectionCache()
+        if !carryCache { cache = SectionCache() }
+        carryCache = false
         gotFrame = false
         lastFrameAt = clock()
         let script = DestinationProbe.streamScript(requires: target.requires, images: target.images, interval: timing.frameInterval,

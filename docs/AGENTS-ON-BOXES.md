@@ -156,3 +156,12 @@ agent finishes, compares the container's tree with it and builds a patch. The pa
 symlink, `.gitmodules`, hook or `.git` paths); the worktree itself is never written. The agent has no git history on the
 box: `git log`, `blame` and `diff` against HEAD are unavailable to it, and it cannot commit. Revisit (ship a bundle of the
 last commits) if agents turn out to need history.
+
+## Sessions and model (U19)
+
+`--session-id <uuid>` / `--resume <uuid>` keep a Claude conversation across runs. The container's HOME is a tmpfs (the login
+lives there and dies with the container), so only `/tmp/.claude/projects` is mounted from `~/rx/.sessions/<key>` on the box,
+where key is the first 16 hex characters of SHA-256 of the lowercased repo slug (the worktree path when there is no slug).
+The waiter creates that directory mode 700, and only a `-v` source of exactly that shape; `prune` removes files older than
+14 days. Residual risk (Codex U19 review, P1): a prompt-injected agent that prints its own login file leaves it in the
+transcript; the directory is private to the box user and the login is a short-lived access token. `--model` is passed through.

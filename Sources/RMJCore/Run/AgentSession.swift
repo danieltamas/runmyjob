@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// What the engine does around a box run when the run is an agent task: carry the Mac's login in, bring the result out.
@@ -36,16 +37,28 @@ struct AgentSession: Sendable {
     static let defaultSlots = 2
 
     /// The container runs the task's own argv, on the filtered network, and finds the prelude that moves the login into place.
-    func decorate(_ job: BoxJob, home: String, slots: Int?) -> BoxJob {
+    func decorate(_ job: BoxJob, home: String, slots: Int?, repo: String? = nil) -> BoxJob {
         let prelude = (path: "\(home)/rx/.prelude/agent-\(task.harness.program).sh", content: prelude)
+        var mounts = [String]()
+        // The conversation's transcript outlives the container, in the box user's directory for this repo; the login does not (it is in /tmp, not here).
+        if task.session != nil, task.harness == .claude {
+            mounts = ["\(Self.sessionDirectory(home: home, repo: repo, worktree: job.worktree)):/tmp/.claude/projects"]
+        }
         let limit = "slots:\(min(max(slots ?? Self.defaultSlots, 1), 16)):\(home)/rx/.agent-slot"
         let environment = ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"].flatMap { ["-e", "\($0)=\(Self.proxy)"] }
             + ["-e", "NO_PROXY=localhost,127.0.0.1"]
         return BoxJob(ulid: job.ulid, name: job.name, worktree: job.worktree, directory: job.directory, argv: task.argv(onBox: true),
                       options: Self.withoutNetwork(job.options), image: job.image, locks: [limit] + job.locks, prelude: prelude)
             .adding(volume: "\(prelude.path):/prelude.sh:ro")
+            .adding(options: mounts.flatMap { ["-v", $0] })
             // The login lives in the container's memory: nothing of it reaches the image's writable layer.
             .adding(options: ["--tmpfs", "/tmp:rw,nosuid,mode=1777,size=512m", "--network", Self.network] + environment)
+    }
+
+    /// `<home>/rx/.sessions/<key>`: the key is a digest, so a repo name or a path can never add a path component.
+    static func sessionDirectory(home: String, repo: String?, worktree: String) -> String {
+        let digest = SHA256.hash(data: Data((repo?.lowercased() ?? worktree).utf8))
+        return "\(home)/rx/.sessions/" + digest.prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 
     /// A profile's own `--network` would leave the container on a second network with a route out.

@@ -11,10 +11,19 @@ public enum AgentRunCommand {
         public var unattended = false
         public var allowedTools = [String]()
         public var requireBox = false
+        public var model: String?
+        public var session: AgentTask.Session?
         public var prompt = ""
     }
 
-    static let usage = "usage: rmj agent run [--harness claude|codex] [--to destination] [--timeout 30m] [--unattended] [--allow \"Tool,Tool\"] [--require-box] -- \"<prompt>\""
+    static let usage = "usage: rmj agent run [--harness claude|codex] [--to destination] [--model name] [--session-id uuid | --resume uuid] [--timeout 30m] [--unattended] [--allow \"Tool,Tool\"] [--require-box] -- \"<prompt>\""
+
+    /// A model name is one word of letters, digits and `. _ : [ ] -`, so it can never be taken for an option or a shell word.
+    static func isModelName(_ text: String) -> Bool {
+        func alphanumeric(_ scalar: Unicode.Scalar) -> Bool { ("A"..."Z").contains(scalar) || ("a"..."z").contains(scalar) || ("0"..."9").contains(scalar) }
+        guard let first = text.unicodeScalars.first, alphanumeric(first), text.utf8.count <= 64 else { return false }
+        return text.unicodeScalars.allSatisfy { alphanumeric($0) || "._:[]-".unicodeScalars.contains($0) }
+    }
 
     public static func parse(_ arguments: [String]) throws -> Options {
         var options = Options()
@@ -30,6 +39,13 @@ public enum AgentRunCommand {
             case "--timeout":
                 guard let seconds = rest.popFirst().flatMap(duration) else { throw Failure.usage }
                 options.timeoutSeconds = seconds
+            case "--model":
+                guard let name = rest.popFirst(), isModelName(name) else { throw Failure.usage }
+                options.model = name
+            case "--session-id", "--resume":
+                // One conversation per run, and a UUID: it names a file on the box.
+                guard options.session == nil, let text = rest.popFirst(), let id = UUID(uuidString: text) else { throw Failure.usage }
+                options.session = AgentTask.Session(id: id.uuidString.lowercased(), resume: argument == "--resume")
             case "--unattended": options.unattended = true
             case "--require-box": options.requireBox = true
             case "--allow":
@@ -41,6 +57,7 @@ public enum AgentRunCommand {
         }
         // Codex has no per-tool allowlist to pass on.
         guard options.harness == .claude || !allowGiven else { throw Failure.usage }
+        guard options.harness == .claude || options.session == nil else { throw Failure.usage }
         guard !options.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw Failure.usage }
         return options
     }
@@ -48,7 +65,7 @@ public enum AgentRunCommand {
     public static func run(arguments: [String], environment: [String: String] = ProcessInfo.processInfo.environment) async -> Int32 {
         guard let options = try? parse(arguments) else { return RunCommand.fail(usage, code: 2) }
         let task = AgentTask(harness: options.harness, prompt: options.prompt, unattended: options.unattended, allowedTools: options.allowedTools,
-                             timeoutSeconds: options.timeoutSeconds, requireBox: options.requireBox)
+                             timeoutSeconds: options.timeoutSeconds, requireBox: options.requireBox, model: options.model, session: options.session)
         return await RunCommand.dispatch(command: task.argv(onBox: false), shell: false, destination: options.destination,
                                          agentTask: task, environment: environment)
     }

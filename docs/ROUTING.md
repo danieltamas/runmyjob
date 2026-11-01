@@ -148,6 +148,11 @@ records why; `--require-box` fails the job instead (exit 3). Tenants apply uncha
 prompts) is only ever passed inside the container, never to the Mac run. `--harness codex` routes `codex exec` the same way through a rule on `command: ["codex"]` and the `rx-codex` image (`--allow`
 is Claude only). A destination takes `agent_slots` (default 2) agent runs at once. Details: docs/AGENTS-ON-BOXES.md.
 
+`--model <name>` passes `--model` to the harness (letters, digits and `. _ : [ ] -`, at most 64). `--session-id <uuid>` starts and
+`--resume <uuid>` continues a Claude conversation (Claude only, one of the two, UUID only). On a box the transcripts live in
+`~/rx/.sessions/<key>` (key = digest of the repo slug), mounted at `/tmp/.claude/projects`, created mode 700 by the waiter and
+pruned after 14 days; the login never goes there.
+
 ## Reachability over Tailscale
 
 RMJ depends on Tailscale and says so. At every connect, in order:

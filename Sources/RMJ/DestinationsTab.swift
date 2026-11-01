@@ -31,11 +31,11 @@ struct DestinationCard: View {
         HoverCard(tenant: card.tenant, action: { withAnimation(Motion.spring) { model.toggle(key) } }) {
             VStack(alignment: .leading, spacing: 0) {
                 header
-                summary.padding(.top, 7)
+                summary.reading(model.reading).padding(.top, 7)
                 // The small chips give way to the tiles: they fold away as the card opens and come back as it closes.
                 if !card.sensors.isEmpty {
                     Collapsible(open: !open, lazy: false) {
-                        SensorRow(chips: card.sensors, visible: model.panelVisible && !open).padding(.top, 5)
+                        SensorRow(chips: card.sensors, visible: model.panelVisible && !open).reading(model.reading).padding(.top, 5)
                             .opacity(open ? 0 : 1).animation(Motion.snappy, value: open)
                     }
                 }
