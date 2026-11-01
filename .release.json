@@ -1,0 +1,10 @@
+{
+  "branch": "main",
+  "log": "LOG.md",
+  "architecture": "docs/ARCHITECTURE.md",
+  "test": [{"run": "scripts/check.sh", "retry": "scripts/check.sh"}],
+  "build": ["scripts/release.sh {version} --verify"],
+  "assets": ["dist/RMJ-{version}.zip", "dist/SHA256SUMS"],
+  "githubRelease": true,
+  "verify": ["RMJ_VERSION={version} scripts/acceptance.sh release"]
+}
