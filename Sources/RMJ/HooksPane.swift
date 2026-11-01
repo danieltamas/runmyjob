@@ -17,6 +17,7 @@ struct HooksPane: View {
                 }
                 if let error { StatusLine(text: error, tone: .failed) }
             }
+            GuardCards()
             notes
         }
         .onAppear { statuses = installer.status() }

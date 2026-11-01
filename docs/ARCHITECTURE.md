@@ -263,6 +263,13 @@ CLI (while the run lasts, plus 3 s) or in the app (`AppBackground`, every 5 s). 
 `~/.rmj/log-sinks.json`, read by the panel glyph and by `rmj sinks`. Failed GitHub job logs are shipped
 once archived (`LogStreamerArchive`). Secrets: Keychain `rmj.sink.<id>`.
 
+## The guard's visibility
+
+`rmj guard` returns 0 at once when `RMJ_GUARD` is exactly `off` or `guard_enabled` is `false` in `config.json` (an unreadable
+file leaves it on). Every block and advice is appended to `~/.rmj/logs/guard.log` (`GuardLog`: one cleaned tab-separated line,
+O_APPEND, regular files of this user only, flock against the trim, newest 1000 lines kept) before the verdict is returned; a
+log that cannot be written never changes the verdict. Settings > Hooks (`GuardCards`) reads the newest ten and holds the switch.
+
 ## The cleaner
 
 `rmj clean` (`Sources/RMJCore/Clean/`) removes build scratch and idle agent worktrees named in `~/.rmj/clean.json`
@@ -272,7 +279,14 @@ in the tree changed within `after_hours`; a `worktrees` candidate under `<repo>/
 not the main worktree, idle, clean, and have every commit on a remote, then goes through `git worktree remove`
 (never `--force`, branch kept). Links are never followed. Without `--apply` nothing is touched. The trail: a
 `clean.pending` marker before each removal, one line per item in `~/.rmj/logs/clean.log` after it, and
-`clean_run`/`clean_item` rows in the ledger (schema step 3), all pruned at 90 days by `Retention`.
+`clean_run`/`clean_item` rows in the ledger (schema step 3), all pruned at 90 days by `Retention`. With `schedule` in `clean.json`, `AppBackground` asks `CleanScheduler.runIfDue()`
+every 10 minutes off the poll loop; the due check (newest `clean_run` older than `every_hours`) runs under `clean.lock`, a
+history that cannot be read is not due, and the `start` line of `clean.log` ends with `schedule` instead of `cli`.
+
+Settings > Cleaner (`CleanerPane`, `CleanerModel`) is the primary control: `CleanConfigStore` validates (`CleanConfig.validate()`)
+and atomically writes `clean.json` (mode 0600, rename over the file; every edit starts from the file on disk), and
+`CleanSettingsService` runs the cleaner with `source` "ui" and reads the history. "Remove" first re-checks and removes
+nothing when the fresh check lists a path the confirmed one did not. A rejected file shows a "Reset to defaults" button.
 
 ## Keychain
 

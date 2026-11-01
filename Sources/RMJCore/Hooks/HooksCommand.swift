@@ -64,6 +64,8 @@ public enum HooksCommand {
             default: return fail("unknown option \(UntrustedText.clean(argument, limit: 40))\n" + usage, code: 2)
             }
         }
+        // The two ways to say "this agent runs its own tests here": the job's environment, or the switch in Settings > Hooks.
+        guard environment["RMJ_GUARD"] != "off", GuardSettings.enabled(home: RMJHome(environment: environment)) else { return 0 }
         if command == nil {
             // A hook that cannot read its input must never stop the agent.
             guard let object = try? JSONSerialization.jsonObject(with: input()) as? [String: Any],
@@ -74,6 +76,20 @@ public enum HooksCommand {
         guard let command, CommandGuard.kind(of: command) != nil else { return 0 }
         let tools = GuardTools(environment: environment)
         let verdict = await CommandGuard.verdict(command: command, cwd: cwd, classify: tools.classify, destination: tools.destination)
+        // The agent sees the text; the owner sees the log (Settings > Hooks), whatever --quiet says.
+        let label: String? = switch verdict {
+        case .allow: nil
+        case .advise: "advise"
+        case .block: "block"
+        }
+        if let label {
+            let directory = CommandGuard.directory(of: command, cwd: cwd)
+            let repo = switch await tools.classify(directory) {
+            case .notRepo: ""
+            case .unclassified(let name), .classified(let name): name
+            }
+            GuardLog(home: RMJHome(environment: environment)).append(verdict: label, repo: repo, directory: directory, command: command)
+        }
         switch verdict {
         case .allow:
             return 0

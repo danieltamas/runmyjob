@@ -62,6 +62,27 @@ enum ScreenshotRender {
             try write(ReportView(model: shown).frame(width: 1040, height: 680), to: url("report"))
             let rows = DemoShots.logSinks.map { LogStreamModel.Row(sink: $0.sink, status: $0.status, pending: $0.pending) }
             try write(LogStreamPane(model: LogStreamModel(demo: rows)).padding(28).frame(width: 760, alignment: .topLeading).background(Backdrop()), to: url("log-streaming"))
+            let cleaner = CleanConfig(targets: [CleanTarget(kind: .scratch, path: "/Users/dev/.cache/rmj-*", afterHours: 72),
+                                                CleanTarget(kind: .scratch, path: "/private/tmp/bton-*", afterHours: 48),
+                                                CleanTarget(kind: .worktrees, path: "/Users/dev/Sites/app", afterHours: 48)],
+                                      schedule: CleanSchedule(everyHours: 24, apply: false))
+            let checked = CleanRun(id: "c1", startedAt: DemoShots.now, finishedAt: DemoShots.now, apply: false, items: [
+                CleanItem(path: "/private/tmp/bton-9f2a", kind: .scratch, action: .wouldRemove, reason: "idle 3 days", bytes: 1_840_000_000),
+                CleanItem(path: "/Users/dev/.cache/rmj-build-old", kind: .scratch, action: .wouldRemove, reason: "idle 5 days", bytes: 6_200_000_000),
+                CleanItem(path: "/Users/dev/Sites/app/.worktrees/fix-login", kind: .worktrees, action: .wouldRemove, reason: "clean and pushed", bytes: 410_000_000),
+                CleanItem(path: "/private/tmp/bton-77c1", kind: .scratch, action: .skipped, reason: "in use", bytes: 0)])
+            let earlier = CleanRun(id: "c0", startedAt: DemoShots.now.addingTimeInterval(-86_400), finishedAt: DemoShots.now.addingTimeInterval(-86_390), apply: true, items: [
+                CleanItem(path: "/private/tmp/bton-1b3d", kind: .scratch, action: .removed, reason: "idle 2 days", bytes: 920_000_000)])
+            func cleanerShot(_ model: CleanerModel, _ name: String) throws {
+                try write(CleanerPane(model: model).padding(28).frame(width: 760, alignment: .topLeading).background(Backdrop()), to: url(name))
+            }
+            try cleanerShot(CleanerModel(demo: cleaner, result: checked, history: [checked, earlier]), "cleaner")
+            try cleanerShot(CleanerModel(demo: CleanConfig.defaults, problem: "target 2: the path must be absolute", history: [earlier]), "cleaner-problem")
+            let blocks = [GuardLog.Entry(at: DemoShots.now, verdict: "block", repo: "acme/orbit", directory: "/Users/dev/Sites/orbit", command: "cargo test --workspace"),
+                          GuardLog.Entry(at: DemoShots.now.addingTimeInterval(-600), verdict: "advise", repo: "acme/orbit", directory: "/Users/dev/Sites/orbit", command: "cargo build --release")]
+            for (name, model) in [("hooks-guard", GuardModel(demo: true, entries: blocks)), ("hooks-guard-off", GuardModel(demo: false, entries: []))] {
+                try write(GuardCards(model: model).padding(28).frame(width: 760, alignment: .topLeading).background(Backdrop()), to: url(name))
+            }
             var down = DemoShots.snapshot(stress: stress)
             down.tailnet = DemoShots.tailnet(standing: .stopped)
             try write(PanelView(model: PanelModel(snapshot: down)), to: url("jobs-tailnet-down"))

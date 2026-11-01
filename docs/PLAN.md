@@ -130,6 +130,9 @@ the unit's final diff, re-run after the last fix; "prints 0" means no P0, P1 or 
 | U19 | Agent runs: --model, --session-id and --resume with a per-repo session directory on the box | U14 | Core Run, box script, tests |
 | U20 | Agent runs: --attach, --append-system-prompt-file, --json result | U19 | Core Run, box script, tests |
 | U21 | The cleaner: `rmj clean` removes stale scratch and agent worktrees, with a log and ledger trail | U20 | Core Clean, Store, CLI, tests |
+| U22 | The cleaner on a schedule: the app runs it every N hours when enabled | U21 | Core Clean, AppBackground, tests |
+| U23 | The cleaner in Settings: schedule, targets, check and remove, history | U22 | Core Clean, Settings pane, tests |
+| U24 | The guard's blocks are visible and can be switched off | U23 | Core Hooks, Hooks pane cards, tests |
 
 ## Units
 
@@ -949,3 +952,112 @@ Acceptance (real temp directories and real `git`; a bare repo as the remote):
 
 /goal: `scripts/check.sh` passes; live, `rmj clean` on this Mac lists the leftovers of 2026-11-01 as `would_remove` with
 sizes, `rmj clean --apply` removes only those, `rmj clean log` shows the run, and `~/.rmj/logs/clean.log` has one line per item.
+
+## U22. The cleaner on a schedule
+
+U21 cleans when someone runs it, so the disk fills again between runs. The menu bar app runs the cleaner on a timer, only
+when the owner turned it on in `~/.rmj/clean.json`; absent means off, as today.
+
+Interfaces (RMJCore, `Sources/RMJCore/Clean/`):
+- `CleanSchedule` (Codable, Equatable, Sendable): `everyHours` (JSON `every_hours`, 1 to 168) and `apply` (default false: a
+  scheduled dry run only records what would go). `CleanConfig.schedule: CleanSchedule?` (JSON key `schedule`, default nil);
+  `CleanConfig(targets:schedule:)` with `schedule` defaulting to nil. A schedule outside the range, or of the wrong type,
+  rejects the whole file like a bad target.
+- `CleanScheduler(ledger: Ledger, home: RMJHome, now: @Sendable () -> Date = Date.init, inUse: (@Sendable (String) async -> Bool)? = nil)`
+  and `func runIfDue() async -> CleanRun?`. It loads `CleanConfig.load(home:)`; it returns nil, and does nothing, when the
+  config has a problem, has no schedule, or the newest `clean_run` (any run, by `started_at`) is less than `every_hours` old.
+  Otherwise it runs `Cleaner(...).run(apply: schedule.apply, source: "schedule")` with the log in `<home>/logs` and returns the
+  run. A run that could not start (another cleaner holds the lock) is returned with its `problem` and not recorded, so
+  the next call tries again.
+- `Cleaner.run(apply:source:)`: `source` defaults to `"cli"` and is written as the last field of the `start` line of
+  `clean.log`.
+- `AppBackground` calls `runIfDue()` at most every 10 minutes, off the polling loop, one at a time.
+
+Acceptance (real temp directories as U21):
+- Config: `schedule` absent is nil; `every_hours` 1 and 168 accepted, 0, 169, a string and a missing `every_hours` reject the file;
+  `apply` defaults to false.
+- Due logic: no schedule, a config problem, or a run started less than `every_hours` ago returns nil and removes nothing; no
+  earlier run, or one exactly `every_hours` old, runs; a dry-run row counts as a run.
+- `apply: false` records a dry run and the old scratch directory survives; `apply: true` removes it, with ledger and log lines
+  as in U21, and the `start` line of `clean.log` ends with `schedule`.
+- A second call right after the first returns nil.
+- Another run holding `clean.lock` gives a run with `problem` set and no ledger row; the call after the lock is released runs.
+
+/goal: `scripts/check.sh` passes; live, with `"schedule": {"every_hours": 24, "apply": false}` in `~/.rmj/clean.json`, the app
+records a dry run within 10 minutes of starting and none for the next 24 hours, and `rmj clean log` shows it.
+
+## U23. The cleaner in Settings
+
+Owner rule (2026-11-01): everything is controlled from the UI, never only from files or the CLI. U21 and U22 shipped
+`clean.json` and `rmj clean` alone; this unit gives the cleaner a Settings pane that does everything the file does, and the
+file stays as storage for the CLI and agents.
+
+Core (`Sources/RMJCore/Clean/`):
+- `CleanConfig.validate() -> String?`: nil when valid, else the first problem ("target 2: ...", "schedule: ..."); `load` uses it.
+  New rule: a `scratch` pattern's last component must contain at least one literal character (`*` or `??` alone are rejected),
+  so a folder choice can never become "everything in it".
+- `CleanConfigStore(home: RMJHome)`: `load() -> (config: CleanConfig, problem: String?)` (as `CleanConfig.load`),
+  `save(_ config: CleanConfig) throws` (throws `CleanConfigStore.Invalid` with the `validate()` message and writes nothing when
+  invalid; otherwise writes `clean.json` atomically, mode 0600, sorted keys, paths as given), `reset() throws` (removes `clean.json`,
+  so the defaults apply; no error when absent). `load` after `save` returns an equal config.
+- `CleanSettingsService(ledger: Ledger, home: RMJHome, now: @Sendable () -> Date = Date.init, inUse: (@Sendable (String) async -> Bool)? = nil)`:
+  `run(apply: Bool) async throws -> CleanRun` loads the config and throws `CleanConfigStore.Invalid` (removing nothing, recording
+  nothing) when it has a problem, else `Cleaner.run(apply:source: "ui")`; `history(limit:) async throws -> [CleanRun]`.
+
+App (`Sources/RMJ/`): a Settings pane "Cleaner" (new `SettingsPane.cleaner`, between Retention and Notifications) with
+`CleanerModel` (`@MainActor ObservableObject`, `init(demo:)` for screenshots) and `CleanerPane`. Every change saves at once.
+- "Automatic cleaning": a switch (on writes `schedule`, off removes it), an interval picker (1, 6, 12, 24, 48, 72, 168 hours), a
+  switch "Remove for real" (`apply`; off: "records what would be removed, removes nothing").
+- "What it cleans": one row per target (kind icon, path, "idle over N h" menu, remove button), buttons "Add build folder..." and
+  "Add git repository..." that open a folder chooser; a build folder asks for the name pattern (required, e.g. `bton-*`) and the
+  idle hours; a repository asks for the idle hours. Invalid input shows the `validate()` message and saves nothing.
+- "Clean now": "Check what would go" runs `run(apply: false)` and lists each item (would remove first, with sizes; the skipped ones
+  collapsed with their reasons); "Remove N items (size)" then asks for confirmation and runs `run(apply: true)` and shows the result.
+- "History": the last 10 runs (time, dry run or applied, items, freed) and "Show log" (reveals `clean.log` in Finder).
+- A rejected `clean.json` shows its problem in a banner with "Reset to defaults" (calls `reset()`); no run starts until fixed.
+
+Acceptance:
+- Core (real temp directories): `validate` accepts and rejects exactly what U21/U22 load did plus the literal-character rule;
+  `save` of an invalid config throws and leaves any existing file byte-identical; a valid save is mode 0600 and loads equal;
+  `reset` returns `load` to the defaults; `run(apply:)` throws on a config problem with nothing removed or recorded, a dry run
+  removes nothing, apply removes and the `start` line of `clean.log` ends with `ui`; `history` returns the runs newest first.
+- UI: `scripts/check.sh` renders the pane (default, schedule on, targets, preview results, problem banner, history) with
+  `--render-screenshots`; no text is clipped or overlapping at 760 points wide in either look; every control above is present.
+
+/goal: `scripts/check.sh` passes; live, in the app: Settings > Cleaner turns automatic cleaning on at 24 h, adds the folder pattern
+`/private/tmp/bton-*`, "Check what would go" lists the leftovers with sizes, "Remove" removes them after confirmation, History shows
+both runs, and `~/.rmj/clean.json` holds exactly what the pane shows.
+
+## U24. The guard's blocks are visible and can be switched off
+
+Why (2026-11-01): the pre-command guard (`rmj guard`) blocks a test or check command with exit 2 and a line on stderr that only
+the agent sees. Nothing records it and no human is asked, so a block reads as a random failure, and a headless job (Bton) that
+must run its own tests has no way to say so. The owner rule applies: control and visibility from the UI.
+
+Core (`Sources/RMJCore/Hooks/`):
+- `GuardSettings` (in `config.json`, `ConfigFile`, like `AgentAccess`): `enabled(home:) -> Bool` (key `guard_enabled`, default true;
+  a missing, unreadable or malformed file is true: the guard stays on) and `set(_:home:) throws`.
+- `RMJ_GUARD=off` in the environment of `rmj guard` (exactly `off`) or `enabled == false` makes it return 0 at once and write
+  nothing, for every verdict. Anything else, including `RMJ_GUARD=0`, leaves it on.
+- `GuardLog(home:)`: `~/.rmj/logs/guard.log`, one tab-separated line per block or advice: timestamp (ISO 8601 UTC), verdict
+  (`block` or `advise`), repo (may be empty), working directory, command, all passed through `UntrustedText.clean` (tabs and
+  newlines in the command become spaces, command cut at 400 characters). `append` is O(1) (O_APPEND, mode 0600, no symlink
+  follow, never throws into the guard: a log that cannot be written never changes the verdict); the file is kept to the newest
+  1000 lines (trimmed when it passes 1200); `recent(limit:) -> [GuardLog.Entry]` newest first, a damaged line is skipped.
+- `HooksCommand.guardCommand` appends an entry for every `.block` and `.advise` verdict (not for `.allow`, not with `--quiet`
+  suppressed output: the log is written regardless of `--quiet`).
+
+App: Settings > Hooks gets, above the agents card, a card "Routing of suites" with a switch "Send tests and checks through RMJ"
+(`GuardSettings`; off: "Agents run their own tests here. Nothing is blocked or advised.") and a card "Recent blocks" listing the
+last 10 entries (time, Blocked or Advice chip, repo, the command, one line each; "Nothing was blocked yet." when empty) with
+"Show log" (reveals `guard.log`). `HooksPane` stays under 500 lines (move the new cards to `GuardCards.swift`).
+
+Acceptance (real temp homes, no network): the defaults on; `set(false)` then `enabled == false`; a malformed `config.json` is on;
+`RMJ_GUARD=off` and `guard_enabled: false` each return 0 for a command that would block and write no log line, `RMJ_GUARD=0` and
+`RMJ_GUARD=Off` still block; a block writes one log line with verdict `block`, an advise one with `advise`, an allow none; a log
+that cannot be written (directory in its place) leaves the exit code 2; `recent` is newest first, skips a damaged line and
+respects the limit; 1300 appends leave at most 1200 and at least 1000 lines; control characters in a command are not in the log.
+UI: the Hooks pane renders (default, switch off, with entries, empty) at 760 points in both looks, nothing clipped.
+
+/goal: `scripts/check.sh` passes; live: with the hook installed, a blocked `cargo test` in a tenant repo appears under Settings >
+Hooks > Recent blocks, turning the switch off lets the same command run, and `RMJ_GUARD=off cargo test` is not blocked.
