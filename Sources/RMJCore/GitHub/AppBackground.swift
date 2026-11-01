@@ -9,6 +9,7 @@ public actor AppBackground {
     /// The autoscaler's last action, for the footer.
     public private(set) var scalingNote: String?
     private var scalingRunning = false
+    private var cleaning = false
 
     private let home: RMJHome
     private let environment: [String: String]
@@ -30,6 +31,7 @@ public actor AppBackground {
         var reposAt = Date.distantPast
         var reconciledAt = Date.distantPast
         var archivedAt = Date.distantPast
+        var cleanCheckedAt = Date.distantPast
         var tokens: (@Sendable (String) -> String?)?
         let scaling = RunnerScalingLoop(home: home, environment: environment)
         while !Task.isCancelled {
@@ -74,6 +76,16 @@ public actor AppBackground {
                     let boxes = BoxDirectory(rules: store.load(), tailnet: tailnet, factory: SSHBoxFactory())
                     await Reconciler(ledger: context.ledger, archive: context.archive, boxes: boxes).reconcile()
                     boxesPolledAt = Date()
+                }
+            }
+            // Off the loop, one at a time: a cleaner walking a big tree must not hold up polling.
+            if !cleaning, Date().timeIntervalSince(cleanCheckedAt) >= 600 {
+                cleanCheckedAt = Date()
+                cleaning = true
+                let scheduler = CleanScheduler(ledger: context.ledger, home: home)
+                Task {
+                    _ = await scheduler.runIfDue()
+                    self.cleaning = false
                 }
             }
             await streamer?.drainAll()

@@ -25,10 +25,33 @@ public struct CleanTarget: Codable, Equatable, Sendable {
     }
 }
 
+/// Turns on the app's timer: absent means the cleaner only runs when asked. `apply` false records a dry run.
+public struct CleanSchedule: Codable, Equatable, Sendable {
+    public var everyHours: Int
+    public var apply: Bool
+
+    public init(everyHours: Int, apply: Bool = false) {
+        self.everyHours = everyHours
+        self.apply = apply
+    }
+
+    private enum CodingKeys: String, CodingKey { case everyHours = "every_hours", apply }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        everyHours = try values.decode(Int.self, forKey: .everyHours)
+        apply = try values.decodeIfPresent(Bool.self, forKey: .apply) ?? false
+    }
+}
+
 public struct CleanConfig: Codable, Equatable, Sendable {
     public var targets: [CleanTarget]
+    public var schedule: CleanSchedule?
 
-    public init(targets: [CleanTarget]) { self.targets = targets }
+    public init(targets: [CleanTarget], schedule: CleanSchedule? = nil) {
+        self.targets = targets
+        self.schedule = schedule
+    }
 
     /// RMJ's own build scratch, three days after it was last touched.
     public static var defaults: CleanConfig {
@@ -39,16 +62,25 @@ public struct CleanConfig: Codable, Equatable, Sendable {
         path.hasPrefix("~") ? FileManager.default.homeDirectoryForCurrentUser.path + path.dropFirst() : path
     }
 
+    /// nil when the config may be saved and run, else the first problem: targets in order, then the schedule.
+    public func validate() -> String? {
+        for (index, target) in targets.enumerated() {
+            var expanded = target
+            expanded.path = Self.expand(target.path)
+            if let problem = expanded.problem { return "target \(index + 1): \(problem)" }
+        }
+        if let schedule, !(1...168).contains(schedule.everyHours) { return "schedule: every_hours must be 1 to 168" }
+        return nil
+    }
+
     /// The file's targets, or the defaults and what is wrong with the file: one bad target rejects all of them.
     public static func load(home: RMJHome) -> (config: CleanConfig, problem: String?) {
         let file = home.url.appendingPathComponent("clean.json")
         guard FileManager.default.fileExists(atPath: file.path) else { return (defaults, nil) }
         do {
             var config = try JSONDecoder().decode(CleanConfig.self, from: Data(contentsOf: file))
-            for index in config.targets.indices {
-                config.targets[index].path = expand(config.targets[index].path)
-                if let problem = config.targets[index].problem { return (defaults, "target \(index + 1): \(problem)") }
-            }
+            for index in config.targets.indices { config.targets[index].path = expand(config.targets[index].path) }
+            if let problem = config.validate() { return (defaults, problem) }
             return (config, nil)
         } catch {
             return (defaults, "clean.json: \(UntrustedText.clean(error.localizedDescription, limit: 160))")
@@ -66,6 +98,9 @@ extension CleanTarget {
         guard !parts.contains("..") else { return "the path may not contain .." }
         guard !parts.dropLast().contains(where: { $0.contains(where: { "*?[".contains($0) }) }) else { return "a wildcard is allowed in the last component only" }
         if kind == .worktrees, parts.last?.contains(where: { "*?[".contains($0) }) == true { return "a worktrees path is a repository, not a glob" }
+        // A pattern of wildcards alone would name every folder in the parent, and a character class can do the same.
+        if kind == .scratch, parts.last?.contains(where: { "[]".contains($0) }) == true { return "the name pattern may use * and ? only" }
+        if kind == .scratch, parts.last?.allSatisfy({ "*?".contains($0) }) == true { return "the name pattern needs at least one literal character" }
         return nil
     }
 }

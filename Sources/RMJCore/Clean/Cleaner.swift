@@ -26,7 +26,14 @@ public struct Cleaner: Sendable {
 
     private static func rounded(_ date: Date) -> Date { Ledger.date(Ledger.ms(date)) }
 
-    public func run(apply: Bool) async -> CleanRun {
+    /// `source` says who asked, for the `start` line of `clean.log`: `cli` or `schedule`.
+    public func run(apply: Bool, source: String = "cli") async -> CleanRun {
+        // Without a condition `execute` always returns a run.
+        await execute(apply: apply, source: source, onlyIf: nil) ?? CleanRun(id: "", startedAt: now(), finishedAt: now(), apply: apply)
+    }
+
+    /// `onlyIf` is asked once the lock is held; false returns nil and leaves no trace.
+    func execute(apply: Bool, source: String, onlyIf: (@Sendable () async -> Bool)?) async -> CleanRun? {
         let started = Self.rounded(now())
         var run = CleanRun(id: ULID.make(now: started), startedAt: started, finishedAt: started, apply: apply)
         let log = CleanLog(directory: logDirectory)
@@ -39,10 +46,11 @@ public struct Cleaner: Sendable {
             return run
         }
         defer { close(lock) }
+        if let onlyIf, !(await onlyIf()) { return nil }
         // Writing the first line proves the log works before anything is removed.
         do {
             try log.recoverPending(at: started)
-            try log.append([run.id, "start", apply ? "apply" : "dry-run"], at: started)
+            try log.append([run.id, "start", apply ? "apply" : "dry-run", source], at: started)
         } catch { traceFailure = "clean.log is not writable" }
 
         func settle(_ path: String, _ kind: CleanTarget.Kind, _ verdict: Verdict) async {
