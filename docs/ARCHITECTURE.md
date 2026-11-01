@@ -137,6 +137,10 @@ green.
 
 ## Agent runs (U14)
 
+U19 adds `--model` and `--session-id`/`--resume` to `AgentTask`; with a session, `AgentSession.decorate` mounts
+`<home>/rx/.sessions/<sha256(repo slug)[0..16]>` at `/tmp/.claude/projects`, and the box waiter creates that directory
+(mode 700, only that path shape) and prunes it after 14 days.
+
 `rmj agent run -- "<prompt>"` is an ordinary `rmj run` of `claude -p` with an `AgentTask` attached. The router, the
 tenant deny and the local fallback are the run engine's own; a rule `{match: {command: ["claude"]}, image: "rx-claude"}`
 sends it to a box, and `--to` still finds the destination's claude rule for the image. What the engine adds around the

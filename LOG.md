@@ -1,5 +1,14 @@
 # LOG
 
+## 0.10.0 (2026-11-01)
+
+- Boxes stream instead of being polled: each keeps one ssh session that reports sensors, load, memory and disk every 10 s (every 2 s while the panel or Settings > Destinations is open), docker every 60 s and slow checks every 5 min. A box that goes quiet for 30 s turns grey with its last readings dated "as of HH:mm". Destination cards show a loading state while the first readings arrive.
+- Settings > Tenants: every tenant is a collapsed card (colour mark, name, what it holds); one opens at a time to set its colour, pattern, width, size, angle and scatter, and the order in which a group's boxes are tried. "Remove tenant" asks twice and is refused while a box or rule still names the tenant.
+- A job that ran on this Mac because no tenant claims its repo shows a "Run remote" chip that adds the repo to a tenant with boxes. It is not offered for jobs a box cannot run (Swift, Xcode, macOS-only scripts).
+- `rmj agent run` takes `--model <name>`, and `--session-id <uuid>` / `--resume <uuid>` (Claude only) so a caller such as Bton can continue a conversation on a box. Transcripts stay in `~/rx/.sessions/<key>` on the box (mode 700, pruned after 14 days); the login never leaves the container's memory. Known risk: an agent that prints its own login file leaves it in that transcript.
+- Faster: the app's redraw work is throttled while the panel is hidden, tab switches no longer lag, and Restart/Quit lose their hover background.
+- Not verified: the live `--session-id` then `--resume` run on a box, the power-off scenario with the app open, and the app's CPU over ten minutes.
+
 ## 2026-10-27 - spec
 
 - Name decided by the owner: RMJ, Run My Job; `rmj` is also the CLI for agents.
@@ -416,3 +425,10 @@ Optional log streaming, the Run report window, and no Open log button on a queue
 - Settings > Destinations lists the tailnet from the box streams' own readings instead of probing every machine again, which was the minute-long wait.
 - Process: tests by Codex (`TenantStyleAcceptanceTests`, `LiveSensorsAcceptanceTests`). Two of them were wrong and went back to Codex with the evidence: a raw string that ended inside the JSON, and a check for a `tools` section the script only has when a box lists programs or images. The local-termination test fixed the reading of the order rule (order the whole written chain, then cut at `local`). 626 tests and scripts/check.sh ok.
 - Not verified yet: the new panes in the installed app, the 2 s pace measured live (timestamps) and the app's CPU while live.
+
+## 2026-11-01 - agent sessions and model (U19), tenant removal, unreleased
+
+- `rmj agent run` takes `--model <name>`, and `--session-id <uuid>` / `--resume <uuid>` (Claude only) so a caller such as Bton can continue a conversation on a box. Transcripts live in `~/rx/.sessions/<key>` on the box (mode 700, pruned after 14 days); the login stays in the container's tmpfs.
+- Settings > Tenants: each tenant is a collapsed card (colour mark, name, what it holds); one opens at a time to edit. "Remove tenant" asks twice and is refused while a box or rule still names the tenant.
+- Process: tests by Codex (`AgentSessionAcceptanceTests`); Codex review in docs/reviews/u19-2026-11-01.md (P1 transcript may hold a login the agent printed: accepted and documented; P2 tenant in the session key: not applicable). 641 tests; scripts/check.sh failed once under load and passed on rerun.
+- Not verified: the live `--session-id` then `--resume` run on a box (blocked: the Mac's Claude login expires soon, so `--require-box` refuses), and the Tenants pane in the installed app.
