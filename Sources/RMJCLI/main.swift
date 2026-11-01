@@ -47,6 +47,10 @@ if let command = arguments.first, ["run", "jobs", "cancel"].contains(command) {
     default: exit(await RunCommand.cancel(arguments: rest))
     }
 }
+if let flag = arguments.first, VersionCommand.flags.contains(flag) {
+    print(VersionCommand.text(executable: CommandLine.arguments[0]))
+    exit(0)
+}
 // The installer recognises its own command by the rmj-cli: marker in this binary.
 FileHandle.standardError.write(Data("rmj-cli: nothing to run yet (U0 skeleton)\n".utf8))
 exit(2)

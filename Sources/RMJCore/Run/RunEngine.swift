@@ -44,6 +44,18 @@ public struct RunResult: Sendable, Equatable {
     public let exitCode: Int32
     /// Where the row stands when `run` returns: `running` means the job continues on the box without this client.
     public let state: JobState
+    /// An agent run's last message (cleaned, at most 64 KiB), the branch holding its result, and where it ran.
+    public var final: String?
+    public var branch: String?
+    public var location = "local"
+
+    public init(jobID: String, exitCode: Int32, state: JobState, final: String? = nil, branch: String? = nil) {
+        self.jobID = jobID
+        self.exitCode = exitCode
+        self.state = state
+        self.final = final
+        self.branch = branch
+    }
 }
 
 public enum CancelOutcome: Sendable, Equatable {
@@ -90,6 +102,12 @@ public struct RunEngine: Sendable {
     private enum BoxOutcome { case finished(RunResult), fallback(String) }
 
     public func run(_ request: RunRequest) async -> RunResult {
+        var result = await perform(request)
+        result.location = (try? await ledger.job(result.jobID))?.location ?? "local"
+        return result
+    }
+
+    private func perform(_ request: RunRequest) async -> RunResult {
         let began = ContinuousClock.now
         let queuedAt = now()
         let id = ULID.make(now: queuedAt)
@@ -181,6 +199,7 @@ public struct RunEngine: Sendable {
             case .success(let session): agent = session
             case .failure(let fallback): return .fallback(fallback.reason)
             }
+            if AgentSession.size(of: task.attachments) > AgentSession.attachmentLimit { return .fallback("attachment too large") }
             boxJob = agent?.decorate(boxJob, home: config.home, slots: config.agentSlots, repo: request.identity.slug) ?? boxJob
         }
         let client = boxes.factory.client(destination: destination, address: address, config: config)
@@ -198,6 +217,10 @@ public struct RunEngine: Sendable {
             try await agent?.snapshot(worktree: request.identity.worktree)
             stage = "sync failed"
             try await client.sync(boxJob)
+            if let attachments = request.agentTask?.attachments, !attachments.isEmpty {
+                stage = "attachment could not be sent"
+                boxJob = boxJob.adding(options: AgentSession.mounts(try await AgentSession.send(attachments, ulid: id, client: client)))
+            }
             var done = JobPatch()
             done.syncEndedAt = now()
             try await ledger.fill(id, patch: done)
@@ -268,7 +291,8 @@ public struct RunEngine: Sendable {
             // The row is settled by now; the event keeps what happened to the result next to the run.
             _ = try? await ledger.advance(id, to: result.state, at: now(), detail: imported.line)
             // A finished task whose result could not be brought back is not a success the caller can build on.
-            if !imported.ok, result.exitCode == 0 { result = RunResult(jobID: id, exitCode: 4, state: .failed) }
+            result.branch = imported.branch
+            if !imported.ok, result.exitCode == 0 { result = RunResult(jobID: id, exitCode: 4, state: .failed, final: result.final) }
         }
         return .finished(result)
     }
@@ -312,7 +336,8 @@ public struct RunEngine: Sendable {
         let settled = try? await ledger.job(id)
         await stream?.finish(state: state.rawValue, exitCode: result.code, seconds: Double(ms) / 1000, avgCPU: settled?.avgCPU,
                              avgMemoryBytes: settled?.avgMemoryBytes)
-        return RunResult(jobID: id, exitCode: Int32(clamping: result.code), state: state)
+        return RunResult(jobID: id, exitCode: Int32(clamping: result.code), state: state,
+                         final: lines.finalText.map { FinalText.clean($0, secrets: secrets) })
     }
 
     /// The job's log stream, when a sink is on for its tenant.
@@ -333,8 +358,11 @@ public struct RunEngine: Sendable {
         var status: Int32 = 127
         let recorder = LoadRecorder()
         await recorder.start()
+        var stdout = Data()
         do {
-            status = try await execute(request, output: pump.add)
+            let process = try await execute(request, output: pump.add, collectStdout: request.agentTask != nil)
+            status = process.status
+            stdout = process.stdout
         } catch {
             notice("rmj: cannot start the command: \(UntrustedText.clean(error.localizedDescription))")
         }
@@ -352,27 +380,27 @@ public struct RunEngine: Sendable {
         _ = try? await ledger.advance(id, to: state, at: now(), patch: patch)
         await stream?.finish(state: state.rawValue, exitCode: Int(status), seconds: Double(patch.macElapsedMS ?? 0) / 1000,
                              avgCPU: average?.cpuPercent, avgMemoryBytes: average?.memoryBytes)
-        return RunResult(jobID: id, exitCode: status, state: state)
+        return RunResult(jobID: id, exitCode: status, state: state, final: request.agentTask == nil ? nil : FinalText.local(stdout, secrets: secrets))
     }
 
     private func runUntracked(_ request: RunRequest) async -> Int32 {
         let pump = OutputPump(writer: nil, output: output, secrets: secrets)
-        let status = (try? await execute(request, output: pump.add)) ?? 127
+        let status = (try? await execute(request, output: pump.add, collectStdout: false))?.status ?? 127
         await pump.close()
         return status
     }
 
-    private func execute(_ request: RunRequest, output: @escaping @Sendable (Data) -> Void) async throws -> Int32 {
+    private func execute(_ request: RunRequest, output: @escaping @Sendable (Data) -> Void, collectStdout: Bool) async throws -> ProcessOutput {
         let directory = URL(fileURLWithPath: request.identity.worktree).appendingPathComponent(request.safeSubdirectory)
         let result: ProcessOutput
         if request.shell {
             result = try await ProcessRunner().run("/bin/bash", ["-c", request.command.joined(separator: " ")], in: directory,
-                                                   environment: ["PATH": Executables.searchPath], timeout: .seconds(14 * 86400), output: output)
+                                                   environment: ["PATH": Executables.searchPath], timeout: .seconds(14 * 86400), collectStdout: collectStdout, output: output)
         } else {
             result = try await ProcessRunner().run("/usr/bin/env", request.command, in: directory,
-                                                   environment: ["PATH": Executables.searchPath], timeout: .seconds(14 * 86400), output: output)
+                                                   environment: ["PATH": Executables.searchPath], timeout: .seconds(14 * 86400), collectStdout: collectStdout, output: output)
         }
-        return result.status
+        return result
     }
 
     // MARK: cancel

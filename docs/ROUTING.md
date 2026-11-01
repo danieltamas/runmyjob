@@ -153,6 +153,14 @@ is Claude only). A destination takes `agent_slots` (default 2) agent runs at onc
 `~/rx/.sessions/<key>` (key = digest of the repo slug), mounted at `/tmp/.claude/projects`, created mode 700 by the waiter and
 pruned after 14 days; the login never goes there.
 
+`--append-system-prompt-file <path>` (Claude only; a regular UTF-8 file of 1 to 64 KiB) adds its text with `--append-system-prompt`. `--attach <dir>`
+(up to four; absolute, `A-Za-z0-9._/+@=-` only, no `..`, an existing directory outside the container roots such as `/work`, `/tmp`, `/etc`) makes a
+directory of the Mac readable inside the container at the same path: on a box it is rsynced (`--safe-links`, at most 50 MiB in all, else the run goes
+local with the reason "attachment too large") to `~/rx/.attach/<ulid>/<index>` (umask 077) and mounted read-only; locally nothing is copied. The box
+removes it when the job ends (`discardSecret`) and prunes entries older than a day. `--json` prints, as the last line of stdout, one object with sorted
+keys `branch`, `exit`, `final`, `job`, `location`; `final` is the harness answer (the stream-json `result` event on a box, trimmed stdout locally),
+cleaned of escapes and invisible characters, with known secrets redacted, at most 64 KiB.
+
 ## Reachability over Tailscale
 
 RMJ depends on Tailscale and says so. At every connect, in order:

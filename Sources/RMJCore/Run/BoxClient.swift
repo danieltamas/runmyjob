@@ -183,8 +183,10 @@ public protocol BoxClient: Sendable {
     func load(ulid: String) async -> JobLoad?
     /// Writes `content` to a private tmpfs directory of this job on the box and returns the directory; never to a disk.
     func stageSecret(ulid: String, name: String, content: Data) async throws -> String
-    /// Removes that directory. Best effort: the box also drops stale ones.
+    /// Removes that directory and the job's attachments. Best effort: the box also drops stale ones.
     func discardSecret(ulid: String) async
+    /// Copies the Mac directory `from` to the box (`<home>/rx/.attach/<ulid>/<index>`, private to the box user) and returns that path.
+    func sendAttachment(ulid: String, index: Int, from: String) async throws -> String
     /// Mirrors the job's directory on the box into `local`, leaving out what an agent run must not bring back.
     func pullTree(_ job: BoxJob, into local: URL) async throws
     /// Makes sure the box's filtering proxy for agent runs is up and allows exactly `hosts`; throws when it cannot.
@@ -196,6 +198,7 @@ public extension BoxClient {
     func load(ulid: String) async -> JobLoad? { nil }
     func stageSecret(ulid: String, name: String, content: Data) async throws -> String { throw BoxFailure("this destination cannot stage credentials") }
     func discardSecret(ulid: String) async {}
+    func sendAttachment(ulid: String, index: Int, from: String) async throws -> String { throw BoxFailure("this destination cannot take attachments") }
     func pullTree(_ job: BoxJob, into local: URL) async throws { throw BoxFailure("this destination cannot return a tree") }
 }
 

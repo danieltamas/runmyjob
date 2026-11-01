@@ -11,10 +11,14 @@ public struct KeychainCredentials: CredentialSource {
     public init() {}
 
     public func load() async throws -> Data {
-        let output = try await ProcessRunner().run("/usr/bin/security", ["find-generic-password", "-s", "Claude Code-credentials", "-w"],
-                                                   timeout: .seconds(30))
-        guard output.status == 0, !output.stdout.isEmpty else { throw AgentCredentials.Failure.unreadable }
-        return output.stdout
+        // Claude Code writes the current login under the user's account name; an older item with another account can
+        // sit beside it with a dead token, and a lookup by service alone returns either.
+        for account in [["-a", NSUserName()], []] {
+            let output = try await ProcessRunner().run("/usr/bin/security", ["find-generic-password", "-s", "Claude Code-credentials"] + account + ["-w"],
+                                                       timeout: .seconds(30))
+            if output.status == 0, !output.stdout.isEmpty { return output.stdout }
+        }
+        throw AgentCredentials.Failure.unreadable
     }
 }
 

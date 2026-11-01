@@ -13,10 +13,60 @@ public enum AgentRunCommand {
         public var requireBox = false
         public var model: String?
         public var session: AgentTask.Session?
+        public var appendSystemPrompt: String?
+        public var attachments = [String]()
+        public var json = false
         public var prompt = ""
     }
 
-    static let usage = "usage: rmj agent run [--harness claude|codex] [--to destination] [--model name] [--session-id uuid | --resume uuid] [--timeout 30m] [--unattended] [--allow \"Tool,Tool\"] [--require-box] -- \"<prompt>\""
+    static let usage = "usage: rmj agent run [--harness claude|codex] [--to destination] [--model name] [--session-id uuid | --resume uuid] [--append-system-prompt-file path] [--attach dir]... [--json] [--timeout 30m] [--unattended] [--allow \"Tool,Tool\"] [--require-box] -- \"<prompt>\""
+
+    static let maxSystemPromptBytes = 65536
+    static let maxAttachments = 4
+    /// What the container keeps for itself: an attachment can never shadow the checkout, the login's tmpfs or the system.
+    private static let reservedRoots: Set<String> = ["work", "tmp", "run", "proc", "sys", "dev", "etc", "usr", "bin", "sbin", "lib", "opt", "root", "home"]
+
+    /// The file's text, or nil: a regular, readable, UTF-8 file of 1 to 64 KiB (never read past one byte over the limit).
+    static func systemPrompt(at path: String) -> String? {
+        guard (try? URL(fileURLWithPath: path).resolvingSymlinksInPath().resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true,
+              let handle = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: maxSystemPromptBytes + 1), (1...maxSystemPromptBytes).contains(data.count) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    /// The directory's standardized path when it can be mounted at that same path in a container, else nil.
+    static func attachmentPath(_ path: String) -> String? {
+        guard path.hasPrefix("/"), path.unicodeScalars.allSatisfy({ ("A"..."Z").contains($0) || ("a"..."z").contains($0) || ("0"..."9").contains($0) || "._/+@=-".unicodeScalars.contains($0) }),
+              !path.split(separator: "/").contains("..") else { return nil }
+        let standard = URL(fileURLWithPath: path).standardized.path
+        guard let first = standard.split(separator: "/").first, !reservedRoots.contains(String(first)) else { return nil }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: standard, isDirectory: &isDirectory), isDirectory.boolValue else { return nil }
+        return standard
+    }
+
+    /// At most 64 KiB of UTF-8, cut between characters.
+    static func bounded(_ text: String) -> String {
+        guard text.utf8.count > maxSystemPromptBytes else { return text }
+        var used = 0, end = text.unicodeScalars.startIndex
+        for index in text.unicodeScalars.indices {
+            used += String(text.unicodeScalars[index]).utf8.count
+            if used > maxSystemPromptBytes { break }
+            end = text.unicodeScalars.index(after: index)
+        }
+        return String(text.unicodeScalars[..<end])
+    }
+
+    /// The last line of `--json`: one object whose `final` is the agent's last message, cleaned and kept under 64 KiB.
+    public static func jsonLine(job: String, location: String, branch: String?, exit: Int32, final: String?) -> String {
+        var sanitizer = LogSanitizer()
+        let cleaned = final.map { String(decoding: sanitizer.clean(Data($0.utf8)), as: UTF8.self) }
+        let object: [String: Any] = ["branch": branch as Any? ?? NSNull(), "exit": Int(exit), "final": cleaned.map(bounded) as Any? ?? NSNull(),
+                                     "job": job, "location": location]
+        let data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes])) ?? Data()
+        return String(decoding: data, as: UTF8.self)
+    }
 
     /// A model name is one word of letters, digits and `. _ : [ ] -`, so it can never be taken for an option or a shell word.
     static func isModelName(_ text: String) -> Bool {
@@ -46,6 +96,13 @@ public enum AgentRunCommand {
                 // One conversation per run, and a UUID: it names a file on the box.
                 guard options.session == nil, let text = rest.popFirst(), let id = UUID(uuidString: text) else { throw Failure.usage }
                 options.session = AgentTask.Session(id: id.uuidString.lowercased(), resume: argument == "--resume")
+            case "--append-system-prompt-file":
+                guard options.appendSystemPrompt == nil, let path = rest.popFirst(), let text = systemPrompt(at: path) else { throw Failure.usage }
+                options.appendSystemPrompt = text
+            case "--attach":
+                guard options.attachments.count < maxAttachments, let path = rest.popFirst().flatMap(attachmentPath) else { throw Failure.usage }
+                options.attachments.append(path)
+            case "--json": options.json = true
             case "--unattended": options.unattended = true
             case "--require-box": options.requireBox = true
             case "--allow":
@@ -58,6 +115,7 @@ public enum AgentRunCommand {
         // Codex has no per-tool allowlist to pass on.
         guard options.harness == .claude || !allowGiven else { throw Failure.usage }
         guard options.harness == .claude || options.session == nil else { throw Failure.usage }
+        guard options.harness == .claude || options.appendSystemPrompt == nil else { throw Failure.usage }
         guard !options.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw Failure.usage }
         return options
     }
@@ -65,9 +123,10 @@ public enum AgentRunCommand {
     public static func run(arguments: [String], environment: [String: String] = ProcessInfo.processInfo.environment) async -> Int32 {
         guard let options = try? parse(arguments) else { return RunCommand.fail(usage, code: 2) }
         let task = AgentTask(harness: options.harness, prompt: options.prompt, unattended: options.unattended, allowedTools: options.allowedTools,
-                             timeoutSeconds: options.timeoutSeconds, requireBox: options.requireBox, model: options.model, session: options.session)
+                             timeoutSeconds: options.timeoutSeconds, requireBox: options.requireBox, model: options.model, session: options.session,
+                             systemPrompt: options.appendSystemPrompt, attachments: options.attachments)
         return await RunCommand.dispatch(command: task.argv(onBox: false), shell: false, destination: options.destination,
-                                         agentTask: task, environment: environment)
+                                         agentTask: task, json: options.json, environment: environment)
     }
 
     /// `90`, `90s`, `30m`, `2h`: seconds, at least one.

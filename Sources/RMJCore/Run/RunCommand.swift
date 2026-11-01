@@ -40,7 +40,8 @@ public enum RunCommand {
     }
 
     /// Routes and runs one command from the current directory; `agentTask` makes it an agent run.
-    static func dispatch(command: [String], shell: Bool, destination: String?, agentTask: AgentTask? = nil, environment: [String: String]) async -> Int32 {
+    static func dispatch(command: [String], shell: Bool, destination: String?, agentTask: AgentTask? = nil, json: Bool = false,
+                         environment: [String: String]) async -> Int32 {
         let context: Context
         do { context = try await open(environment: environment) } catch {
             if agentTask?.requireBox == true {
@@ -62,11 +63,12 @@ public enum RunCommand {
         let boxes = BoxDirectory(rules: context.rules, tailnet: context.tailnet, factory: SSHBoxFactory())
         let reconciler = Reconciler(ledger: context.ledger, archive: context.archive, boxes: boxes)
         await reconciler.reconcile()
+        let printed = LastByte()
         let engine = RunEngine(ledger: context.ledger, archive: context.archive,
                                router: Router(rules: context.rules, tailnet: context.tailnet, probes: probes,
                                               fileExists: { FileManager.default.fileExists(atPath: $0) }),
                                boxes: boxes, probes: probes,
-                               output: { FileHandle.standardOutput.write($0) },
+                               output: { printed.add($0); FileHandle.standardOutput.write($0) },
                                notice: { FileHandle.standardError.write(Data(($0 + "\n").utf8)) },
                                streamer: LogStreamer.make(home: RMJHome(environment: environment)))
         let root = URL(fileURLWithPath: identity.worktree).standardizedFileURL.resolvingSymlinksInPath().path
@@ -76,6 +78,11 @@ public enum RunCommand {
                                  destination: destination, forceLocal: environment["RX_LOCAL"] == "1",
                                  agent: AgentContext.detect(environment: environment), subdirectory: relative, agentTask: agentTask)
         let result = await engine.run(request)
+        if json {
+            // The object is the last line, on a line of its own whatever the job printed before it.
+            let line = AgentRunCommand.jsonLine(job: result.jobID, location: result.location, branch: result.branch, exit: result.exitCode, final: result.final)
+            FileHandle.standardOutput.write(Data(((printed.endsLine ? "" : "\n") + line + "\n").utf8))
+        }
         return result.exitCode
     }
 

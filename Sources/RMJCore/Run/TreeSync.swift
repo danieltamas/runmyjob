@@ -50,6 +50,19 @@ public enum TreeSync {
         }
     }
 
+    /// Copies a directory the caller chose (an agent run's attachment) as it is, symlinks that leave it excluded. The box
+    /// directory is created private to the box user first, so nobody else on the box can read what was attached.
+    public static func send(directory: URL, destination: String, boxDirectory: String, shell: String?, runner: ProcessRunner = ProcessRunner()) async throws {
+        guard let rsync = rsyncPath() else { throw Failure.noRsync }
+        var arguments = ["-a", "--delete", "--safe-links", "--rsync-path", "umask 077; mkdir -p \(SSH.quote(boxDirectory)) && rsync"]
+        if let shell { arguments += ["-e", shell] }
+        arguments += [directory.path + "/", destination]
+        let output = try await runner.run(rsync, arguments, timeout: .seconds(600))
+        guard output.status == 0 else {
+            throw Failure.rsyncFailed(output.status, UntrustedText.clean(output.stderr.split(separator: "\n").first.map(String.init) ?? "", limit: 200))
+        }
+    }
+
     /// The untracked, ignored paths of the checkout as rsync exclusions: git decides, not a pattern file the box could change.
     private static func writeIgnoredList(worktree: URL, to list: URL, runner: ProcessRunner) async throws {
         let ignored = try await runner.run("/usr/bin/git", ["-C", worktree.path, "ls-files", "-z", "-o", "-i", "--exclude-standard", "--directory"],

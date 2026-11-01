@@ -110,6 +110,13 @@ public struct SSHBoxClient: BoxClient {
         _ = try? await box(["unsecret", ulid])
     }
 
+    public func sendAttachment(ulid: String, index: Int, from: String) async throws -> String {
+        let directory = "\(home)/rx/.attach/\(ulid)/\(index)"
+        try await TreeSync.send(directory: URL(fileURLWithPath: from), destination: "\(alias):\(directory)/", boxDirectory: directory,
+                                shell: try SSH.rsyncShell(address: address, alias: alias))
+        return directory
+    }
+
     public func pullTree(_ job: BoxJob, into local: URL) async throws {
         // The box releases the checkout's lock when the container ends; a run queued behind it syncs over the directory.
         // The result is only good if this job still held the lock before and after the pull.

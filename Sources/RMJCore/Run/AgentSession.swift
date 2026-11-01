@@ -37,7 +37,7 @@ struct AgentSession: Sendable {
     static let defaultSlots = 2
 
     /// The container runs the task's own argv, on the filtered network, and finds the prelude that moves the login into place.
-    func decorate(_ job: BoxJob, home: String, slots: Int?, repo: String? = nil) -> BoxJob {
+    func decorate(_ job: BoxJob, home: String, slots: Int?, repo: String? = nil, attachments: [Attachment] = []) -> BoxJob {
         let prelude = (path: "\(home)/rx/.prelude/agent-\(task.harness.program).sh", content: prelude)
         var mounts = [String]()
         // The conversation's transcript outlives the container, in the box user's directory for this repo; the login does not (it is in /tmp, not here).
@@ -50,7 +50,7 @@ struct AgentSession: Sendable {
         return BoxJob(ulid: job.ulid, name: job.name, worktree: job.worktree, directory: job.directory, argv: task.argv(onBox: true),
                       options: Self.withoutNetwork(job.options), image: job.image, locks: [limit] + job.locks, prelude: prelude)
             .adding(volume: "\(prelude.path):/prelude.sh:ro")
-            .adding(options: mounts.flatMap { ["-v", $0] })
+            .adding(options: mounts.flatMap { ["-v", $0] } + Self.mounts(attachments))
             // The login lives in the container's memory: nothing of it reaches the image's writable layer.
             .adding(options: ["--tmpfs", "/tmp:rw,nosuid,mode=1777,size=512m", "--network", Self.network] + environment)
     }
@@ -106,8 +106,8 @@ struct AgentSession: Sendable {
     }
 
     /// Pulls the box's directory and records it as a branch; the line to show the user either way.
-    func importResult(_ job: BoxJob, client: BoxClient, worktree: String) async -> (line: String, ok: Bool) {
-        guard let base else { return ("the agent finished; no snapshot was taken, so nothing was imported", false) }
+    func importResult(_ job: BoxJob, client: BoxClient, worktree: String) async -> (line: String, ok: Bool, branch: String?) {
+        guard let base else { return ("the agent finished; no snapshot was taken, so nothing was imported", false, nil) }
         let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("rmj-agent-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: scratch) }
         do {
@@ -116,11 +116,11 @@ struct AgentSession: Sendable {
             let title = task.prompt.split(separator: "\n").first.map(String.init) ?? "agent run"
             switch try await AgentBranch.record(worktree: URL(fileURLWithPath: worktree), base: base, result: scratch, jobID: job.ulid,
                                                 message: "rmj agent run \(job.ulid): \(title)", parent: head, unborn: head == nil) {
-            case .unchanged: return ("the agent changed nothing", true)
-            case .created(let branch, let commit): return ("agent result on branch \(branch) (\(commit.prefix(8)))", true)
+            case .unchanged: return ("the agent changed nothing", true, nil)
+            case .created(let branch, let commit): return ("agent result on branch \(branch) (\(commit.prefix(8)))", true, branch)
             }
         } catch {
-            return ("the agent finished but its result could not be imported (\(UntrustedText.clean(error.localizedDescription, limit: 120))); the files stay on the box in \(job.directory)", false)
+            return ("the agent finished but its result could not be imported (\(UntrustedText.clean(error.localizedDescription, limit: 120))); the files stay on the box in \(job.directory)", false, nil)
         }
     }
 }

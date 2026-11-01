@@ -7,15 +7,23 @@ public final class AgentStream: @unchecked Sendable {
     private var pending = Data()
     private let emit: @Sendable (Data) -> Void
 
+    private var result: String?
+
     public init(emit: @escaping @Sendable (Data) -> Void) { self.emit = emit }
+
+    /// What the agent answered: the `result` of the last `result` event, nil until one arrives.
+    public var finalText: String? {
+        lock.lock(); defer { lock.unlock() }
+        return result
+    }
 
     public func add(_ chunk: Data) {
         lock.lock(); defer { lock.unlock() }
         pending.append(chunk)
         while let newline = pending.firstIndex(of: 0x0A) {
-            let line = pending[pending.startIndex..<newline]
+            let line = Data(pending[pending.startIndex..<newline])
             pending.removeSubrange(pending.startIndex...newline)
-            write(Self.render(Data(line)))
+            take(line)
         }
     }
 
@@ -23,7 +31,13 @@ public final class AgentStream: @unchecked Sendable {
     public func flush() {
         lock.lock(); defer { lock.unlock() }
         guard !pending.isEmpty else { return }
-        write(Self.render(pending)); pending = Data()
+        take(pending); pending = Data()
+    }
+
+    private func take(_ line: Data) {
+        if let event = try? JSONSerialization.jsonObject(with: line) as? [String: Any], event["type"] as? String == "result",
+           let text = event["result"] as? String { result = text }
+        write(Self.render(line))
     }
 
     private func write(_ text: String) {

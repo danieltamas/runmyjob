@@ -128,6 +128,7 @@ the unit's final diff, re-run after the last fix; "prints 0" means no P0, P1 or 
 | U17 | Tenants: colour and pattern per tenant, Tenants pane, box order inside a group, tag a local job's repo from the job list | U2, U7 | Core Routing, Panel, App Settings and Jobs, tests |
 | U18 | Live sensors: 2 s frames while the panel is open, pushed to the UI | U16 | Core Net, App PanelModel, tests |
 | U19 | Agent runs: --model, --session-id and --resume with a per-repo session directory on the box | U14 | Core Run, box script, tests |
+| U20 | Agent runs: --attach, --append-system-prompt-file, --json result | U19 | Core Run, box script, tests |
 
 ## Units
 
@@ -838,3 +839,49 @@ Acceptance:
 
 /goal: `scripts/check.sh` passes, a live `rmj agent run --require-box --session-id <uuid> -- "remember the word kiwi"` then
 `--resume <uuid> -- "what word?"` answers kiwi (on the box the claude rule names), and the box shows no credentials file under `~/rx/.sessions`.
+
+## U20. Agent runs: attachments, a system prompt file, a machine-readable result
+
+What a caller that runs review agents on a box needs (docs/BTON-INTEGRATION.md, gaps 6 to 9; 12 is a rules fix, 10 and 11 are
+deferred, 13 stays local). Gap 7 is settled by the caller attaching the PR diff as a file through `--attach`; shipping a git
+bundle is deferred until the fix and resolve moves run on a box.
+
+Interfaces:
+- `rmj agent run [--attach <dir>]... [--append-system-prompt-file <path>] [--json] ...` (Claude only for the prompt file;
+  `--attach` and `--json` work for both harnesses).
+- `--append-system-prompt-file <path>`: a regular file, UTF-8, 1 to 65536 bytes, given at most once, read when the options are
+  parsed; claude plus this flag with `--harness codex`, an unreadable, empty, oversized or non-UTF-8 file, a second use: usage
+  error (exit 2). `AgentTask.systemPrompt: String?`; `argv` (local and box) inserts `--append-system-prompt <text>` right
+  after `--model <m>` when present, otherwise after the prompt options as for `--model` today (model, then system prompt, then
+  session, then tools). The text is one argv element, never a shell word.
+- `--attach <dir>`, up to 4: an absolute path to an existing directory with no `..` and only the characters
+  `A-Za-z0-9._/+@=-`, not `/` and not at or under `/work`, `/tmp`, `/run`, `/proc`, `/sys`, `/dev`, `/etc`, `/usr`, `/bin`,
+  `/sbin`, `/lib`, `/opt`, `/root`, `/home`; total size at most 50 MiB (measured with a dry-run rsync, over the limit the run
+  fails before anything is sent: exit 2 for the shape, the ledger reason "attachment too large" and the Mac fallback for the
+  size). `AgentTask.attachments: [String]` (the standardized paths). On a box: after `sync` and before `go`, each directory is
+  sent (`rsync -a --safe-links --delete`, no ignore list: the caller chose these files) to `<home>/rx/.attach/<ulid>/<index>`
+  through the new `BoxClient.sendAttachment(ulid:index:from:) -> String` (default implementation throws, so existing fakes
+  compile) and mounted `-v <box dir>:<same path as on the Mac>:ro`. `AgentSession.decorate(_:home:slots:repo:attachments:)` takes `[AgentSession.Attachment]` (`Attachment(boxDirectory: String, path: String)`, default `[]`).
+  Locally nothing is done: the paths already exist. `discardSecret` also removes `.attach/<ulid>`; `prune` removes
+  `.attach` entries older than 1 day.
+- `--json`: the last line the command prints is one JSON object with sorted keys `branch` (`rmj/agent/<ulid>` when a branch
+  was created, else null), `exit` (the command's exit code), `final` (string or null), `job` (the ULID), `location`
+  (`local` or the destination name). `final` is the `result` string of the stream-json `result` event on a box run
+  (`AgentStream.finalText`), the trimmed stdout of a local run; both cleaned with `UntrustedText.clean`, at most 65536 bytes.
+  A run that never got a job (usage error, exit 2) prints no JSON. `RunResult` gains `final`, `branch`, `location`.
+
+Acceptance:
+- Parsing of each flag: valid, every invalid shape above, the exclusions, defaults unchanged.
+- argv: exact vectors with system prompt, model and session together, local and box, a prompt text with spaces, quotes and
+  a leading `--` stays one element.
+- `decorate` with attachment box paths mounts exactly `-v <box>:<mac path>:ro` per attachment and nothing else new.
+- `AgentStream.finalText` is the `result` event's `result` (last one wins), nil without one, never a tool result or an
+  assistant text; terminal escapes are removed by the JSON builder.
+- `AgentRunCommand.jsonLine(job:location:branch:exit:final:)` is a single line, keys sorted, `final` escaped and truncated at 65536
+  bytes, nulls for nil.
+- The engine, with a fake box client: the attachment is sent after `sync` and before `go`, the mount is in the job's
+  options, a failing send falls back to the Mac with the reason "attachment could not be sent" (or fails when `--require-box`),
+  `RunResult.final` and `.branch` are set from a stream with a result event and a created branch.
+- `BoxAssets.script` prunes `.attach` entries older than 1 day and `discardSecret` removes `.attach/<ulid>`.
+
+/goal: `scripts/check.sh` passes; live, `rmj agent run --require-box --json --attach <dir with a file> --append-system-prompt-file <file> -- "<read the attached file and answer with its first line>"` prints the first line in `final` of the last JSON line, and the box shows no `.attach/<ulid>` afterwards.

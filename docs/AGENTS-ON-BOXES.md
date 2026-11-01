@@ -165,3 +165,12 @@ where key is the first 16 hex characters of SHA-256 of the lowercased repo slug 
 The waiter creates that directory mode 700, and only a `-v` source of exactly that shape; `prune` removes files older than
 14 days. Residual risk (Codex U19 review, P1): a prompt-injected agent that prints its own login file leaves it in the
 transcript; the directory is private to the box user and the login is a short-lived access token. `--model` is passed through.
+
+## Attachments, system prompt, result (U20)
+
+`--attach <dir>` (see ROUTING.md) puts a directory of the Mac on the box under `~/rx/.attach/<ulid>/<index>`, created 0700 by
+`rsync --rsync-path "umask 077; mkdir -p ... && rsync"`, and mounts it `:ro` at the Mac path. The client accepts only the directory shape
+`.../rx/.attach/<ulid>/<index>` back from the box. `rx-run.sh unsecret <ulid>` removes it with the job's secrets; `prune` removes `.attach` entries
+older than a day for jobs whose client never came back. Treat an attachment as readable by the agent and by anything the agent can run, like the
+checkout itself. `--append-system-prompt-file` is read on the Mac; the text travels as one argv element. `--json` is the machine-readable result for
+callers such as Bton.

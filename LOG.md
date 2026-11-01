@@ -1,5 +1,11 @@
 # LOG
 
+## Unreleased
+
+- `rmj agent run --attach <dir>` (up to four, 50 MiB in all) makes a directory of the Mac readable inside the agent's container, on a box or locally; `--append-system-prompt-file <path>` adds a system prompt from a file; `--json` prints one JSON object as the last line (`job`, `location`, `branch`, `exit`, `final`) so a caller reads the answer without parsing the log.
+- `rmj --version` prints the app version instead of "nothing to run yet".
+- Not verified: the live attach run on a box (needs a valid Claude login on the Mac).
+
 ## 0.10.0 (2026-11-01)
 
 - Boxes stream instead of being polled: each keeps one ssh session that reports sensors, load, memory and disk every 10 s (every 2 s while the panel or Settings > Destinations is open), docker every 60 s and slow checks every 5 min. A box that goes quiet for 30 s turns grey with its last readings dated "as of HH:mm". Destination cards show a loading state while the first readings arrive.

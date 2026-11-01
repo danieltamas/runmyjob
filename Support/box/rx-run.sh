@@ -13,7 +13,7 @@
 #   cancel <ulid>                                  remove the container by label; stop a waiter that has not started
 #   job    <ulid>                                  print "container <present|absent> <boot_id>" and the records that exist
 #   secret <ulid> <name>                           write stdin to <name> in a private tmpfs directory for the job; prints the directory
-#   unsecret <ulid>                                remove that directory
+#   unsecret <ulid>                                remove that directory and the job's attachments
 #   holder <lockfile>                              who holds (or last held) a job lock
 #   egress <image> <hosts>                         start the agent network and its filtering proxy (HTTPS to <hosts> only)
 #   prune                                          drop records older than 30 days
@@ -139,6 +139,8 @@ prune() {
   # A conversation's transcripts are kept 14 days after their last write; a directory left empty goes with them.
   find "$HOME/rx/.sessions" -type f -mtime +14 -delete 2>/dev/null
   find "$HOME/rx/.sessions" -mindepth 1 -type d -empty -mtime +14 -delete 2>/dev/null
+  # Attachments belong to one run and are removed with it; one left by a run that never finished goes after a day.
+  find "$HOME/rx/.attach" -mindepth 1 -maxdepth 1 -mtime +1 -exec rm -rf {} + 2>/dev/null
 }
 
 case "${1:-}" in
@@ -216,7 +218,7 @@ case "${1:-}" in
     : > "$logs/$ulid.hold"
     printf '%s\n' "$dir"; exit 0 ;;
   unsecret)
-    shift; valid_ulid "$1"; rm -rf "$(secret_dir "$1")"; [ -e "$logs/$1.hold" ] && : > "$logs/$1.release"; exit 0 ;;
+    shift; valid_ulid "$1"; rm -rf "$(secret_dir "$1")" "$HOME/rx/.attach/$1"; [ -e "$logs/$1.hold" ] && : > "$logs/$1.release"; exit 0 ;;
   holder)
     # Who holds (or last held) a job lock: the Mac checks that nobody took the checkout before it pulled the result.
     shift; [[ ${1:-} =~ ^/[A-Za-z0-9._/-]+\.lock$ && $1 != *..* ]] || exit 2
