@@ -21,7 +21,13 @@ public struct RunnerContainer: Sendable, Equatable {
     }
 
     public static func list(shell: OpsShell) async throws -> [RunnerContainer] {
-        let output = try await shell.run("docker ps -a --filter name=runner- --format '{{.Names}}\t{{.ID}}\t{{.Image}}\t{{.State}}\t{{.Status}}'", input: nil, timeout: .seconds(30))
+        // `docker ps` prints an image id instead of the name once the tag has moved to a newer build (a stale runner);
+        // the image the container was created from is `Config.Image`, which still carries the version.
+        let command = "tab=$(printf '\\t'); docker ps -a --filter name=runner- --format '{{.Names}}\t{{.ID}}\t{{.Image}}\t{{.State}}\t{{.Status}}' | "
+            + "while IFS=\"$tab\" read -r name id image state status; do "
+            + "made=$(docker inspect --format '{{.Config.Image}}' \"$id\" 2>/dev/null); "
+            + "printf '%s\\t%s\\t%s\\t%s\\t%s\\n' \"$name\" \"$id\" \"${made:-$image}\" \"$state\" \"$status\"; done"
+        let output = try await shell.run(command, input: nil, timeout: .seconds(30))
         guard output.status == 0 else { throw RunnerStackDeployer.Failure.remote("docker ps exited \(output.status)") }
         return parse(String(decoding: output.stdout, as: UTF8.self)).sorted { $0.name < $1.name }
     }
