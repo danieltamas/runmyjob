@@ -37,10 +37,19 @@ url="https://github.com/${RUNNER_TARGET}"
 if [ -n "${RUNNER_REG_TOKEN:-}" ]; then
   token="$RUNNER_REG_TOKEN"
 else
-  token="$(curl -fsS -X POST "$api" \
+  # A redirect is never followed here: a renamed repo is followed by RMJ (rules, PAT, this stack), a transferred one needs a person.
+  token=""
+  reply="$(mktemp)"
+  code="$(curl -sS -o "$reply" -w '%{http_code}' -X POST "$api" \
     -H "Authorization: Bearer ${GH_PAT}" \
     -H "Accept: application/vnd.github+json" \
-    -H "X-GitHub-Api-Version: 2022-11-28" | jq -r '.token // empty')" || token=""
+    -H "X-GitHub-Api-Version: 2022-11-28")" || code=""
+  case "$code" in
+    2??) token="$(jq -r '.token // empty' "$reply")" || token="" ;;
+    301|302|307|308) echo "entrypoint: GitHub redirected ${RUNNER_TARGET} (the repo was renamed or moved); RMJ follows a rename, a move to another owner needs a person" >&2 ;;
+    *) echo "entrypoint: GitHub answered ${code:-no reply} for ${RUNNER_TARGET}" >&2 ;;
+  esac
+  rm -f "$reply"
 
   # Stale registrations: an ephemeral runner that dies before its job (container recreated, box
   # frozen) stays registered offline, and GitHub keeps assigning queued jobs to such a runner
@@ -75,7 +84,7 @@ else
 fi
 unset GH_PAT RUNNER_REG_TOKEN
 if [ -z "$token" ]; then
-  echo "entrypoint: GitHub did not issue a registration token for ${RUNNER_TARGET} (token scope or target wrong); retry in 5 min" >&2
+  echo "entrypoint: GitHub did not issue a registration token for ${RUNNER_TARGET} (token scope or target wrong, see above); retry in 5 min" >&2
   sleep 300
   exit 1
 fi

@@ -10,6 +10,9 @@ public actor AppBackground {
     public private(set) var scalingNote: String?
     private var scalingRunning = false
     private var cleaning = false
+    private var renameChecking = false
+    /// Where the app shows a heal or a refusal (a notification); nothing until it is set.
+    private var announce: @Sendable (String, String) -> Void = { _, _ in }
 
     private let home: RMJHome
     private let environment: [String: String]
@@ -22,6 +25,8 @@ public actor AppBackground {
         home = RMJHome(environment: environment)
     }
 
+    public func setAnnouncer(_ announce: @escaping @Sendable (String, String) -> Void) { self.announce = announce }
+
     /// Runs until the task is cancelled. A failure in one round is skipped; the next round tries again.
     public func run() async {
         guard let context = try? await RunCommand.open(environment: environment) else { return }
@@ -32,6 +37,7 @@ public actor AppBackground {
         var reconciledAt = Date.distantPast
         var archivedAt = Date.distantPast
         var cleanCheckedAt = Date.distantPast
+        var renamesCheckedAt = Date.distantPast
         var tokens: (@Sendable (String) -> String?)?
         let scaling = RunnerScalingLoop(home: home, environment: environment)
         while !Task.isCancelled {
@@ -67,6 +73,17 @@ public actor AppBackground {
                         await scaling.tick(rules: rules, ledger: ledger, tailnet: { await TailnetState.read(environment: environment) })
                         self.scalingNote = await scaling.note
                         self.scalingRunning = false
+                    }
+                }
+                // Off the loop, every 10 minutes: one GitHub call per repo the rules name, and a box set up again when a rename was followed.
+                if !renameChecking, Date().timeIntervalSince(renamesCheckedAt) >= 600 {
+                    renamesCheckedAt = Date()
+                    renameChecking = true
+                    let watch = RepoRenameWatch(home: home, notice: announce)
+                    let environment = environment
+                    Task {
+                        await watch.check(tailnet: { await TailnetState.read(environment: environment) })
+                        self.renameChecking = false
                     }
                 }
                 let live = ((try? await context.ledger.jobs()) ?? []).contains { !$0.state.isSettled && $0.github == nil }

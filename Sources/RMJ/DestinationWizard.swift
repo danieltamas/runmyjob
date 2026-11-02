@@ -244,28 +244,12 @@ struct SetupRunView: View {
 
     private func run() async {
         defer { working = false }
-        guard case .valid(let rules, _) = RulesStore(home: RMJHome()).load(), let config = rules.destinations[name] else {
+        guard case .valid(let rules, _) = RulesStore(home: RMJHome()).load(), rules.destinations[name] != nil else {
             report = DestinationSetup.Report(steps: [DestinationSetup.Step(name: "rules", outcome: .failed, detail: "no destination \(name)", hint: "Fix ~/.rmj/rules.json")])
             return
         }
-        let state = await TailnetState.read()
-        guard case .online(let address) = DestinationResolver.resolve(DestinationTarget(alias: config.sshAlias, peerID: config.peerID), in: state) else {
-            report = DestinationSetup.Report(steps: [DestinationSetup.Step(name: "reachability", outcome: .failed, detail: "\(name) is not online on the tailnet", hint: "Start the machine or Tailscale on it")])
-            if discardOnFailure { discard() }
-            return
-        }
-        let home = RMJHome()
-        let targets = config.runnerTargets ?? []
-        let found = DestinationOps.tokens(targets, home: home)
-        let api = GHCLI()
-        let registrations = DestinationSetup.registrations(api: api, targets: targets, tokens: found)
-        let setup = DestinationSetup(
-            shell: SSHOpsShell(address: address, alias: config.sshAlias), name: name, config: config,
-            stack: SupportFiles.locate("runner-stack"), images: SupportFiles.locate("box/images"), neededImages: rules.images(for: name),
-            tokens: found,
-            registrations: registrations,
-            notice: { text in Task { @MainActor in notice = text } })
-        let result = await setup.run()
+        let result = await DestinationSetup.repair(name, rules: rules, home: RMJHome(), tailnet: await TailnetState.read(),
+                                                   notice: { text in Task { @MainActor in notice = text } })
         report = result
         if discardOnFailure, !result.isReady { discard() }
     }

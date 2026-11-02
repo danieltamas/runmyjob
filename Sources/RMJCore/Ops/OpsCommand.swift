@@ -26,15 +26,7 @@ public enum OpsCommand {
                 for runner in report.runners { print("\(runner.name)  \(runner.state)  version \(runner.version ?? "unknown")  \(runner.status)") }
                 for image in try await RunnerImages.list(shell: shell) { print("image \(image.repository):\(image.tag)  \(image.age)") }
             } else if arguments[0] == "setup" {
-                guard case .online(let address) = DestinationResolver.resolve(DestinationTarget(alias: destination.sshAlias, peerID: destination.peerID), in: context.tailnet) else {
-                    return RunCommand.fail("\(name) is not reachable on the tailnet")
-                }
-                let tokens = DestinationOps.tokens(targets, home: context.home)
-                let registrations = DestinationSetup.registrations(api: GHCLI(), targets: targets, tokens: tokens)
-                let setup = DestinationSetup(shell: SSHOpsShell(address: address, alias: destination.sshAlias), name: name, config: destination,
-                                             stack: SupportFiles.locate("runner-stack", environment: environment), images: SupportFiles.locate("box/images", environment: environment),
-                                             neededImages: rules.images(for: name), tokens: tokens, registrations: registrations, notice: { print($0) })
-                let report = await setup.run()
+                let report = await DestinationSetup.repair(name, rules: rules, home: context.home, tailnet: context.tailnet, environment: environment, notice: { print($0) })
                 for step in report.steps {
                     print("\(step.outcome.rawValue)  \(step.name): \(step.detail)")
                     if let hint = step.hint { print("    \(hint)") }

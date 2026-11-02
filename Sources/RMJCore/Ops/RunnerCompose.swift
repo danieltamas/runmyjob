@@ -44,6 +44,13 @@ public struct RunnerCompose: Sendable, Equatable {
 
     static func key(_ target: String) -> String { target.lowercased() }
 
+    /// `target (lowercased) -> service` the way `init` names them for these targets: the same collision handling, in the same order.
+    static func serviceMap(base: String, targets: [String]) -> [String: String] {
+        let compose = RunnerCompose(base: base, targets: targets, host: "rmj")
+        let valid = targets.filter { RunnerTarget.path($0) != nil }
+        return Dictionary(zip(valid.map(key), compose.services), uniquingKeysWith: { first, _ in first })
+    }
+
     /// `target (lowercased, org: prefixed for an org) -> service` for the runner services of the bundled file.
     static func bundledServices(_ compose: String) -> [String: String] {
         var map = [String: String]()

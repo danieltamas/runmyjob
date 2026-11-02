@@ -92,6 +92,15 @@ final class AlertCenter: NSObject, UNUserNotificationCenterDelegate {
         center.add(UNNotificationRequest(identifier: "\(notice.kind.rawValue)-\(notice.jobID)", content: content, trigger: nil))
     }
 
+    /// A notice that belongs to no job: a repo rename the rules followed, or a box set up again.
+    func announce(title: String, body: String) {
+        guard Self.hasBundle else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "rmj.announce.\(UUID().uuidString)", content: content, trigger: nil))
+    }
+
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
         [.banner, .sound]
     }

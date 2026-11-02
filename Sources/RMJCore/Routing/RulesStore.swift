@@ -51,8 +51,13 @@ public struct RulesStore: Sendable {
     /// Validates, writes a temp file and renames it. `expected` is the fingerprint the edit was based
     /// on: if the file is not that any more, an external edit happened and nothing is written. The
     /// last valid file is never replaced by an invalid one.
-    public func save(_ rules: Rules, expected: String) throws {
+    /// What `save` would refuse, without writing anything.
+    public func validate(_ rules: Rules) throws {
         do { try RulesValidation.validate(rules, profileExists: profileExists) } catch { throw Failure.invalid(String(describing: error)) }
+    }
+
+    public func save(_ rules: Rules, expected: String) throws {
+        try validate(rules)
         let current = FileManager.default.contents(atPath: url.path)
         let currentFingerprint = current.map(Self.fingerprint) ?? Self.fingerprint(Data(Rules.starterJSON.utf8))
         guard currentFingerprint == expected else {

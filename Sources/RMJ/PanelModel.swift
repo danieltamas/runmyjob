@@ -146,6 +146,8 @@ final class PanelModel: ObservableObject {
         let boxes = BoxStreams(tailnet: { await monitor.current(maxAge: 15) }, onFrame: { _, _ in bell.ringForFrame() })
         streams = boxes
         pace = LivePace(streams: boxes, bell: bell)
+        let alerts = alerts
+        Task { [background] in await background.setAnnouncer { title, body in Task { @MainActor in alerts.announce(title: title, body: body) } } }
         alerts.onUpdate = { [weak self] status in
             // A failed check changes nothing: an arrow already shown stays until a check says otherwise.
             if status != .unknown { self?.updateStatus = status }
