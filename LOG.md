@@ -1,5 +1,9 @@
 # LOG
 
+## 0.13.0 (2026-11-02)
+
+- Settings > Tenants: each tenant card now lists its repos, with a field to add `owner/repo` and a Remove button on each one. Before this, a repo could only be given to a tenant from the Jobs list or by editing `rules.json`, so a box could not be set to run CI for a repo no tenant owned (the Tokens sheet refused it with "which tenant does not own"). A repo belongs to one tenant: to move it, remove it from the old tenant, then add it to the new one. Removing is refused while a box still lists the repo as a runner target. Not verified: registering a runner for a newly assigned repo on a box.
+
 ## 0.12.0 (2026-11-01)
 
 - A runner on a box no longer shows "version unknown": when a runner's image was rebuilt after it started, Docker reports an image id, so RMJ now reads the image the container was created from (`gh-runner:2.338.2`). Verified live against ai-gamerina-eu. Such a runner still runs the older build until it is restarted.
