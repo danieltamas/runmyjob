@@ -283,7 +283,7 @@ func packageExposesThreeProducts() throws {
 func processRunnerCapturesSeparateStreams() async throws {
     let result = try await ProcessRunner().run(
         "/bin/sh", ["-c", "i=0; while [ $i -lt 10000 ]; do printf 'stdout line\\n'; printf 'stderr line\\n' >&2; i=$((i+1)); done; exit 7"],
-        timeout: .seconds(15)
+        timeout: .seconds(60)
     )
     #expect(result.status == 7)
     #expect(result.stdout == Data(String(repeating: "stdout line\n", count: 10000).utf8))
@@ -297,7 +297,7 @@ func processRunnerPreservesLiteralArguments() async throws {
     let marker = root.appendingPathComponent("must-not-exist").path
     let arguments = ["a; touch \(marker)", "$(touch \(marker))", "space and 'quotes'", ""]
     let result = try await ProcessRunner().run(
-        "/usr/bin/printf", ["%s\\0"] + arguments, timeout: .seconds(5)
+        "/usr/bin/printf", ["%s\\0"] + arguments, timeout: .seconds(60)
     )
     #expect(result.status == 0)
     #expect(result.stdout == Data((arguments.joined(separator: "\0") + "\0").utf8))

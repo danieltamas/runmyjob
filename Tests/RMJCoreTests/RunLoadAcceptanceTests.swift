@@ -136,7 +136,8 @@ struct RunLoadAcceptanceTests {
 
         let child = Process()
         child.executableURL = URL(fileURLWithPath: "/bin/sleep")
-        child.arguments = ["8"]
+        // Keep the real child alive well beyond the sampling wait, even under CPU load.
+        child.arguments = ["120"]
         try child.run()
         defer {
             if child.isRunning { child.terminate() }

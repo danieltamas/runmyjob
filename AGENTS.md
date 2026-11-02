@@ -91,3 +91,8 @@ the owner says Globex starts (PLAN.md, U13).
 - **Plain ASCII punctuation** in README, docs, user-facing strings and commits (`-`, `"`, `'`,
   `...`). `scripts/check.sh` fails on en and em dashes, curly quotes, the ellipsis character, NBSP.
 - Conventional Commits, no co-author trailers, commit and push only when the owner asks.
+- **Tests run only on release.** `swift test` and `scripts/check.sh` (the full suite) run when a release
+  is cut (the `release` script runs them), not per feature or fix. While building a change, run
+  `swift build` and stop; run a test only when the owner asks or to diagnose a reported failure. This
+  overrides the global "run affected tests in the inner loop". Codex still writes the unit's
+  acceptance tests; they are committed with the change and first run at the release.
