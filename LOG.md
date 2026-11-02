@@ -1,6 +1,5 @@
 # LOG
 
-
 ## 0.14.0 (2026-11-02)
 
 - A renamed GitHub repo no longer strands its runner. When `lexito.ro` became `kazu`, the box runner kept asking for the old name, GitHub answered with a redirect, no token was issued and the jobs queued with "0 online". RMJ now checks every repo your rules name every 10 minutes (the first check only records each repo's GitHub id). When a repo comes back under a new name with the same owner and the same id, RMJ updates the rules, copies the Keychain token to the new name, renames the box's service in its runner extras and sets the box up again, and tells you. A box that is off is set up when it returns.
