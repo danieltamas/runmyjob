@@ -208,6 +208,21 @@ unknown files on the box, so every extras file is written back after it. Names a
 never replace a stack file. A container that is not one of the destination's runner targets is named `ci-*`, because RMJ
 expects every `runner-*` container to be a target's.
 
+### Repo renames
+
+A repo renamed on GitHub keeps answering to its old name through a redirect, but a box runner's token request follows
+none, so its runner never registers. `RepoRenameHealer` (GitHub/) asks `GET /repos/<name>` for every literal repo the rules
+name (tenant repos, runner targets and labels, rule matches). The first check records GitHub's repo id per name in
+`~/.rmj/repo_ids.json`; a later answer with another `full_name` is followed only when the owner is the same, the id equals
+the recorded one, no other tenant holds the new name (by claim, pattern or owner) and the owning tenant set is unchanged.
+A followed rename rewrites `rules.json` in all four places, copies the Keychain PAT to the new name, renames the box's
+service in the destination's extras (only keys under `services:`; a clash or a `depends_on`, `links` or `volumes_from`
+reference stops the heal) and records the destination in `~/.rmj/pending_repairs.json`. Any failed step restores the
+extras, drops the pending entries it added and leaves the rules as they were. `RepoRenameWatch`, run every 10 minutes
+by `AppBackground`, then sets each pending box up through `DestinationSetup.repair` (shared with the wizard and
+`rmj destination setup`) and removes it from the pending file only when the box is ready and the rules did not change meanwhile.
+Refusals are announced once; renames are logged to `~/.rmj/logs/renames.log`.
+
 ### Box health sensors
 
 The probe's `diskhealth` step reads what a plain user can: read-only mount, inode use, kernel I/O errors (only when the

@@ -1,5 +1,12 @@
 # LOG
 
+
+## 0.14.0 (2026-11-02)
+
+- A renamed GitHub repo no longer strands its runner. When `lexito.ro` became `kazu`, the box runner kept asking for the old name, GitHub answered with a redirect, no token was issued and the jobs queued with "0 online". RMJ now checks every repo your rules name every 10 minutes (the first check only records each repo's GitHub id). When a repo comes back under a new name with the same owner and the same id, RMJ updates the rules, copies the Keychain token to the new name, renames the box's service in its runner extras and sets the box up again, and tells you. A box that is off is set up when it returns.
+- RMJ will not follow a rename it cannot trust: a move to another owner, a name that another repository or another tenant holds, a repo whose id was never recorded, or an extras file that already defines the new service or lists the old one under `depends_on`. It tells you once and leaves the rules alone. Renames are logged in `~/.rmj/logs/renames.log`.
+- The box's runner no longer follows redirects on the token request and says what GitHub answered (renamed, moved, or a bad token) instead of a generic message.
+- Verified: acceptance tests for the heal, the extras rename and the refusals. Not verified live: a real rename healed end to end, and the new entrypoint on a box.
 ## 0.13.0 (2026-11-02)
 
 - Settings > Tenants: each tenant card now lists its repos, with a field to add `owner/repo` and a Remove button on each one. Before this, a repo could only be given to a tenant from the Jobs list or by editing `rules.json`, so a box could not be set to run CI for a repo no tenant owned (the Tokens sheet refused it with "which tenant does not own"). A repo belongs to one tenant: to move it, remove it from the old tenant, then add it to the new one. Removing is refused while a box still lists the repo as a runner target. Not verified: registering a runner for a newly assigned repo on a box.
