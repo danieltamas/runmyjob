@@ -32,6 +32,8 @@ public enum TenantEditing {
         case order(String, [String])
         /// Adds `owner/name` to the tenant's repos so the repo can run on its boxes from the next run.
         case assign(repo: String, tenant: String)
+        /// Takes `owner/name` out of the tenant's repos; a runner target that still serves it blocks the change.
+        case unassign(repo: String, tenant: String)
         /// Deletes the tenant. Its repos become unclassified and run on this Mac; boxes and rules that still name it block the removal.
         case remove(String)
     }
@@ -80,6 +82,10 @@ public enum TenantEditing {
             rules.tenants[tenant]?.order = boxes.isEmpty ? nil : boxes
         case .assign(let repo, let tenant):
             try assign(repo.lowercased(), to: tenant, in: &rules)
+        case .unassign(let repo, let tenant):
+            guard rules.tenants[tenant] != nil else { throw Failure(description: "no tenant \(tenant)") }
+            let kept = (rules.tenants[tenant]?.repos ?? []).filter { $0.lowercased() != repo.lowercased() }
+            rules.tenants[tenant]?.repos = kept.isEmpty ? nil : kept
         case .remove(let tenant):
             guard rules.tenants[tenant] != nil else { throw Failure(description: "no tenant \(tenant)") }
             let boxes = rules.destinations.filter { $0.value.tenant == tenant }.keys.sorted()

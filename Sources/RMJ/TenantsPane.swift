@@ -59,6 +59,7 @@ private struct TenantCard: View {
     @State private var draft = TenantStyle()
     @State private var saving: Task<Void, Never>?
     @State private var confirmingRemoval = false
+    @State private var newRepo = ""
 
     private var resolved: TenantStyle.Resolved { draft.resolved(for: summary.name) }
 
@@ -105,8 +106,35 @@ private struct TenantCard: View {
                 }
                 .frame(width: 210)
             }
+            repos
             removal
         }
+    }
+
+    /// The repos this tenant owns: a repo is a tenant's before its boxes may run its CI or its jobs. One tenant per repo, so a repo
+    /// held elsewhere has to be taken out there first.
+    private var repos: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Repos").font(.meta).foregroundStyle(Theme.textTertiary)
+            HStack(spacing: 8) {
+                GlassField(placeholder: "owner/repo", text: $newRepo)
+                ChipButton(title: "Add", action: addRepo)
+            }
+            ForEach(summary.repos, id: \.self) { repo in
+                HStack {
+                    Text(repo).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.textSecondary)
+                    Spacer()
+                    ChipButton(title: "Remove") { onChange(.unassign(repo: repo, tenant: summary.name)) }
+                }
+            }
+        }
+    }
+
+    private func addRepo() {
+        let repo = newRepo.trimmingCharacters(in: .whitespaces)
+        guard !repo.isEmpty else { return }
+        onChange(.assign(repo: repo, tenant: summary.name))
+        newRepo = ""
     }
 
     /// Removing asks twice. The repos of the tenant fall back to "no tenant" and run on this Mac; a box or rule that still names it refuses.
