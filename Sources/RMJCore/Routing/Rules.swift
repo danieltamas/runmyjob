@@ -99,6 +99,14 @@ public struct Rule: Codable, Sendable, Equatable {
     }
 }
 
+extension Rule {
+    /// A rule that sends a job to a box needs an image or a profile; without one the box has no container to run it in
+    /// and the job runs on the Mac. There is no default image.
+    public var runsInContainer: Bool { image != nil || profile != nil }
+    public var namesBox: Bool { to.contains { $0 != "local" } }
+    public static let noImageNotice = "matched, but no image: will not run in a container"
+}
+
 extension Rules {
     /// What a fresh install starts with: nothing is routed anywhere until a destination is added.
     public static let starterJSON = """

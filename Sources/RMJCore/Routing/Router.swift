@@ -113,6 +113,7 @@ public struct Router: Sendable {
         for name in chain {
             switch await attempt(name, config: config, tenant: tenant, rule: matched, log: &log) {
             case .success(let address):
+                if let matched, !matched.runsInContainer { log.append("rule \"\(matched.name)\" \(Rule.noImageNotice)") }
                 log.append("result: \(name) at \(address)")
                 return RouteDecision(location: .destination(name: name, address: address), fallbackReason: nil,
                                      rule: matched?.name, tenant: tenant, advisory: matched?.advisory, explanation: log)

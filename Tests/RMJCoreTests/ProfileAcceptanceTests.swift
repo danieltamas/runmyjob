@@ -37,7 +37,7 @@ struct ProfileAcceptanceTests {
         #expect(message.contains("unknown profile") && message.contains("missing"))
         let result = await f.engine().run(f.request())
         let row = try #require(try await f.ledger.job(result.jobID))
-        #expect(row.location == "local" && row.fallbackReason == "no container for this rule")
+        #expect(row.location == "local" && row.fallbackReason == "rule \"acceptance\": profile \"missing\" not found, no container")
         #expect(await f.box.calls.isEmpty)
     }
 

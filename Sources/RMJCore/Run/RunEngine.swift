@@ -187,8 +187,10 @@ public struct RunEngine: Sendable {
             ?? (request.agentTask == nil ? nil : allRules.first { ($0.match.command ?? []).contains(request.agentTask?.harness.program ?? "") && $0.to.contains(destination) })
         let plan: DockerPlan
         do { plan = try DockerPlan.make(rule: rule, config: config, repo: request.identity.slug, directory: directory,
-                                                    subdirectory: request.safeSubdirectory, profiles: profiles) } catch {
-            return .fallback("no container for this rule")
+                                                    subdirectory: request.safeSubdirectory, profiles: profiles) } catch DockerPlan.Failure.unknownProfile(let name) {
+            return .fallback("rule \"\(decision.rule ?? "--to")\": profile \"\(name)\" not found, no container")
+        } catch {
+            return .fallback("\(decision.rule.map { "rule \"\($0)\" " } ?? "")\(Rule.noImageNotice)")
         }
         var boxJob = BoxJob(ulid: id, name: ULID.containerName(repo: request.identity.slug, ulid: id), worktree: request.identity.worktree,
                             directory: directory, argv: request.shell ? ["bash", "-c", request.command.joined(separator: " ")] : request.command,

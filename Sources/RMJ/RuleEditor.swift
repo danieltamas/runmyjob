@@ -58,8 +58,11 @@ struct RuleEditorCard: View {
                     FieldBlock(title: "Tenant") { GlassField(placeholder: "any", text: $draft.tenant, monospaced: true) }
                 }
                 HStack(alignment: .top, spacing: 8) {
-                    FieldBlock(title: "Image") { GlassField(placeholder: "default", text: $draft.image, monospaced: true) }
+                    FieldBlock(title: "Image") { GlassField(placeholder: "none", text: $draft.image, monospaced: true) }
                     FieldBlock(title: "Profile") { GlassField(placeholder: "none", text: $draft.profile, monospaced: true) }
+                }
+                if noContainer {
+                    StatusLine(text: "No image or profile: this rule will not run in a container, the job runs on this Mac.", tone: .failed)
                 }
             }
             if let error { StatusLine(text: error, tone: .failed) }
@@ -80,6 +83,10 @@ struct RuleEditorCard: View {
         .onAppear(perform: load)
     }
 
+    private var noContainer: Bool {
+        chosen.contains { $0 != "local" } && draft.image.trimmingCharacters(in: .whitespaces).isEmpty
+            && draft.profile.trimmingCharacters(in: .whitespaces).isEmpty
+    }
     private var chosen: [String] { draft.to.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }
 
     private func toggle(_ name: String) {

@@ -159,6 +159,7 @@ struct RoutingTab: View {
                         }
                     }
                     if let environment = rule.environment { Chip(text: environment, color: Theme.textSecondary, style: .outline) }
+                    else if rule.chain.contains(where: { !$0.isLocal }) { Chip(text: "no image", color: Theme.danger, style: .outline) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 22)

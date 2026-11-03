@@ -85,6 +85,49 @@ private func routingRouter(_ spy: RoutingProbeSpy, rules: Rules = routingRules()
 }
 
 struct RoutingAcceptanceTests {
+    @Test func ruleContainerAndBoxPredicatesHaveNoDefaultImage() {
+        for (image, profile, expected) in [
+            (nil, nil, false), ("rx-rust", nil, true),
+            (nil, "ledger", true), ("rx-rust", "ledger", true)
+        ] as [(String?, String?, Bool)] {
+            var rule = Rules.shipped.rules[1]
+            rule.image = image
+            rule.profile = profile
+            #expect(rule.runsInContainer == expected)
+            for (chain, namesBox) in [([], false), (["local"], false),
+                                      (["ai-eu-1"], true), (["local", "ai-eu-1"], true)] {
+                rule.to = chain
+                #expect(rule.namesBox == namesBox)
+            }
+        }
+        #expect(Rule.noImageNotice == "matched, but no image: will not run in a container")
+    }
+
+    @Test func destinationExplanationWarnsBeforeResultOnlyWithoutImageOrProfile() async throws {
+        let probe = await routingProbe()
+        let state = await routingTailnet()
+        for (image, profile) in [(nil, nil), ("rx-rust", nil), (nil, "ledger"),
+                                 ("rx-rust", "ledger")] as [(String?, String?)] {
+            var rules = routingRules()
+            var rule = rules.rules[1]
+            rule.name = "image notice"
+            rule.image = image
+            rule.profile = profile
+            rules.rules = [rule]
+            let spy = RoutingProbeSpy(latest: probe, refreshed: probe)
+            let decision = await routingRouter(spy, rules: rules, state: state).route(routingRequest())
+            #expect(decision.location == .destination(name: "ai-eu-1", address: "100.64.0.10"))
+            let notice = "rule \"image notice\" matched, but no image: will not run in a container"
+            if image == nil && profile == nil {
+                let warning = try #require(decision.explanation.firstIndex(of: notice))
+                let result = try #require(decision.explanation.firstIndex { $0.hasPrefix("result:") })
+                #expect(warning < result)
+            } else {
+                #expect(!decision.explanation.contains { $0.contains("matched, but no image:") })
+            }
+        }
+    }
+
     @Test func companyTenantDenyAppliesToRulesAndExplicitDestination() async {
         let probe = await routingProbe()
         let state = await routingTailnet()

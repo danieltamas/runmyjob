@@ -112,7 +112,7 @@ struct RunFixture: Sendable {
     let box: RunBox
     let output = RunCapture()
     let notices = RunCapture()
-    static func make(stopped: Bool = false, profile: String? = nil) async throws -> RunFixture {
+    static func make(stopped: Bool = false, profile: String? = nil, image: String? = "rx-rust") async throws -> RunFixture {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("rmj-u4-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let database = try Database(url: root.appendingPathComponent("ledger.sqlite"))
@@ -130,6 +130,7 @@ struct RunFixture: Sendable {
         {"name":"acceptance","match":{"command":["true","false","echo","sh","cargo"]},
          "to":["ai-eu-1"],"image":"rx-rust"}
         """.utf8))]
+        rules.rules[0].image = image
         if let profile { rules.rules[0].profile = profile }
         try writeLedgerProfile(home: RMJHome(environment: ["RMJ_HOME": root.path]))
         let state = RulesState.valid(rules, fingerprint: "u4")
@@ -165,6 +166,26 @@ struct RunFixture: Sendable {
 }
 
 struct RunAcceptanceTests {
+    @Test func ruleWithoutImageOrProfileRunsOnMacUnlessBoxRequired() async throws {
+        for requireBox in [false, true] {
+            let f = try await RunFixture.make(image: nil); defer { f.remove() }
+            var request = f.request(["echo", "local execution"])
+            if requireBox {
+                request.agentTask = AgentTask(harness: .claude, prompt: "test", requireBox: true)
+            }
+            let result = await f.engine().run(request)
+            let row = try #require(try await f.ledger.job(result.jobID))
+            #expect(result.exitCode == (requireBox ? 3 : 0))
+            #expect(row.state == (requireBox ? .failed : .done))
+            if !requireBox {
+                #expect(row.location == "local" && row.environment == "mac")
+            }
+            #expect(row.fallbackReason == "rule \"acceptance\" matched, but no image: will not run in a container")
+            #expect(f.output.text == (requireBox ? "" : "local execution\n"))
+            #expect(await f.box.calls.isEmpty)
+        }
+    }
+
     @Test func stoppedTailnetRunsFalseLocallyAndArchivesLog() async throws {
         let f = try await RunFixture.make(stopped: true); defer { f.remove() }
         let result = await f.engine().run(f.request(["false"]))
