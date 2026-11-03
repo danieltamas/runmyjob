@@ -1,5 +1,11 @@
 # LOG
 
+## 0.15.0 (2026-11-03)
+
+- A rule that names a box but has no image or profile now says so. There is no default image: such a rule never runs in a container, and the job ran on the Mac with only "no container for this rule". Now `rmj route` prints `matched, but no image: will not run in a container`, `rmj run` records `rule "<name>" matched, but no image: will not run in a container` as the reason, a rule whose profile does not exist says that, the rule editor shows "none" in the Image field with a red note, and the routing list marks the rule "no image". The local fallback is unchanged; `--require-box` still makes a missing container a hard stop.
+- A job kept on the Mac on purpose (`RX_LOCAL=1`) is no longer shown as an unclassified repo. It keeps its tenant, so the "Run remote" menu, which tried to add a repo to a tenant that already had it and did nothing, is gone for those rows. The row shows a "forced local" chip instead, so you can tell an agent's choice from a routing fallback.
+- Builds on a box that you reach as root no longer fail with "permission denied" when installing dependencies. The tree sync copied the Mac's file owner (uid 501) onto the box, and RMJ's containers drop capabilities, so root could not write those files. The sync now leaves owner and group out, so files belong to the login user. Files already on a box keep their owner until you change it once (`chown -R` on that checkout's `rx` folder).
+- Not verified live: a full test suite on a box through the new profile for demoanaf and easyapi, and the sync change on every box.
 ## 0.14.1 (2026-11-03)
 
 - A box can now run CI for your own repos. Setting a runner target on a Gamerina box for a repo of your `personal` tenant (a shared tenant, one person's own repos) was refused with "which tenant does not own". A shared tenant is not a company, so any box may serve its repos; a repo of a company tenant is still refused on another company's box. Behavior change: runner targets owned by a shared tenant are accepted on every destination.
