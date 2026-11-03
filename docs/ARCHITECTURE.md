@@ -223,6 +223,13 @@ by `AppBackground`, then sets each pending box up through `DestinationSetup.repa
 `rmj destination setup`) and removes it from the pending file only when the box is ready and the rules did not change meanwhile.
 Refusals are announced once; renames are logged to `~/.rmj/logs/renames.log`.
 
+GitHub job ids are global, so the ledger rows of a renamed repo stay valid: `GitHubPoller.store` adopts a stored `gh-` job
+that is not under the polled name (`Ledger.setRepo`) instead of inserting it again, which would fail on `job.id`.
+
+`GitHubPoller` keeps the last error of each failing repo (dropped when the repo polls cleanly or leaves the watched set).
+`AppBackground.footerNote` carries the rate-limit pause or, failing that, `failureNote()`, through `PanelModel` and
+`PanelSnapshot.githubProblem` to the panel footer; a failing poll is never silent.
+
 ### Box health sensors
 
 The probe's `diskhealth` step reads what a plain user can: read-only mount, inode use, kernel I/O errors (only when the
