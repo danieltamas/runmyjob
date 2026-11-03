@@ -261,10 +261,21 @@ struct RoutingAcceptanceTests {
     @Test func forceLocalWinsForOtherwiseRoutableCargoTest() async {
         let probe = await routingProbe()
         let spy = RoutingProbeSpy(latest: probe, refreshed: probe)
-        let router = await routingRouter(spy, state: routingTailnet())
-        let decision = await router.route(routingRequest(forced: true))
+        let state = await routingTailnet()
+        let router = routingRouter(spy, state: state)
+        for (slug, tenant) in [("acme/axon", "personal"), ("globex/portal-x", "globex"),
+                               ("nobody/thing", "unclassified")] {
+            let decision = await router.route(routingRequest(slug: slug, forced: true))
+            #expect(decision.location == .local)
+            #expect(decision.fallbackReason == "forced")
+            #expect(decision.tenant == tenant)
+        }
+        let invalid = Router(rules: .invalid(path: "/fake/rules.json", message: "bad JSON"),
+                             tailnet: state, probes: spy, fileExists: { _ in true })
+        let decision = await invalid.route(routingRequest(forced: true))
         #expect(decision.location == .local)
         #expect(decision.fallbackReason == "forced")
+        #expect(decision.tenant == "unclassified")
         #expect(await spy.calls == 0)
     }
 

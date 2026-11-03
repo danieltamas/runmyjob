@@ -127,6 +127,7 @@ struct JobRowView: View {
             Text(row.title).font(.rowTitle).foregroundStyle(Theme.textPrimary).fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading).layoutPriority(1)
             if row.canTag { JobTagMenu(repo: row.title, command: row.command, model: model) }
+            if row.forcedLocal { Chip(text: "forced local", color: Theme.textSecondary, style: .outline).help("Kept on this Mac by the caller (RX_LOCAL=1), not by a routing fallback") }
             Chip(text: row.location.text, symbol: row.locationKind == .local ? "laptopcomputer" : row.locationKind == .destination ? "server.rack" : nil,
                  color: row.locationKind == .local ? Theme.local : Theme.tenant(row.tenant))
             Chip(text: row.stateChip.text, color: Theme.color(row.stateChip.tone), style: row.state == .running ? .filled : .tinted)

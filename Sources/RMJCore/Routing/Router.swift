@@ -83,7 +83,12 @@ public struct Router: Sendable {
             log.append("result: local (\(reason))")
             return RouteDecision(location: .local, fallbackReason: reason, rule: rule, tenant: tenant, advisory: advisory, explanation: log)
         }
-        if request.forceLocal { return local("forced") }
+        if request.forceLocal {
+            // A forced job keeps its tenant: "unclassified" would offer to tag a repo that is already classified.
+            let tenant: String
+            if case .valid(let config, _) = rules { tenant = Tenancy.resolve(request.identity, in: config.tenants).tenant } else { tenant = "unclassified" }
+            return local("forced", tenant: tenant)
+        }
         guard case .valid(let config, _) = rules else { return local(rules.invalidReason ?? "rules invalid") }
         let resolution = Tenancy.resolve(request.identity, in: config.tenants)
         log.append("tenant: \(resolution.tenant) (\(resolution.how))")

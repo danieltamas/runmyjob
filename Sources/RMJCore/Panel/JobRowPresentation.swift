@@ -40,6 +40,8 @@ public struct JobRowPresentation: Sendable, Equatable {
     public let tenant: String?
     /// A local job whose repo no tenant claims: the list offers to give it one so it can run on a box.
     public let canTag: Bool
+    /// A job kept on the Mac by the caller (`RX_LOCAL=1` / `--local`), not by a routing fallback: the row says so.
+    public let forcedLocal: Bool
     public let agent: Agent
     public let stateChip: Chip
     public let branch: String?
@@ -134,6 +136,7 @@ public struct JobRowPresentation: Sendable, Equatable {
         location = Chip(text: info != nil ? "github" : job.location, tone: isLocal ? .local : .plain)
         tenant = isLocal ? nil : job.tenant
         canTag = isLocal && info == nil && job.tenant == Tenancy.unclassified
+        forcedLocal = isLocal && info == nil && job.fallbackReason == "forced"
         agent = Agent(job.agent, github: info != nil)
         branch = job.branch
         worktree = info != nil ? nil : (job.worktree.flatMap { $0.isEmpty ? nil : $0 } ?? "main checkout")

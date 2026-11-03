@@ -39,7 +39,7 @@ public enum TreeSync {
         // box's own files; without it, excluded names are simply left alone on the box.
         let version = try? await runner.run(rsync, ["--version"], timeout: .seconds(10))
         let honorsProtect = !(version.map { String(decoding: $0.stdout, as: UTF8.self).contains("openrsync") } ?? true)
-        var arguments = ["-az", "--delete", "--safe-links", "--from0"]
+        var arguments = ["-rlptDz", "--delete", "--safe-links", "--from0"]
         if honorsProtect { arguments += ["--delete-excluded"] + protected.flatMap { ["--filter", "P \($0)"] } }
         arguments += ["--exclude-from=\(list.path)"] + fixedExcludes.flatMap { ["--exclude", $0] }
         if let shell { arguments += ["-e", shell] }
@@ -54,7 +54,7 @@ public enum TreeSync {
     /// directory is created private to the box user first, so nobody else on the box can read what was attached.
     public static func send(directory: URL, destination: String, boxDirectory: String, shell: String?, runner: ProcessRunner = ProcessRunner()) async throws {
         guard let rsync = rsyncPath() else { throw Failure.noRsync }
-        var arguments = ["-a", "--delete", "--safe-links", "--rsync-path", "umask 077; mkdir -p \(SSH.quote(boxDirectory)) && rsync"]
+        var arguments = ["-rlptD", "--delete", "--safe-links", "--rsync-path", "umask 077; mkdir -p \(SSH.quote(boxDirectory)) && rsync"]
         if let shell { arguments += ["-e", shell] }
         arguments += [directory.path + "/", destination]
         let output = try await runner.run(rsync, arguments, timeout: .seconds(600))
