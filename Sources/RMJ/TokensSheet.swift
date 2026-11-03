@@ -42,8 +42,20 @@ struct TokensSheet: View {
 
     private func load() {
         guard case .valid(let rules, _) = RulesStore(home: RMJHome()).load(), let targets = rules.destinations[name]?.runnerTargets else { return }
-        let found = DestinationOps.tokens(targets, home: RMJHome())
-        let byOwner = Dictionary(grouping: targets) { $0.hasPrefix("org:") ? $0 : String($0.split(separator: "/").first ?? "") }
+        func owner(of target: String) -> String { target.hasPrefix("org:") ? target : String(target.split(separator: "/").first ?? "") }
+        var found = DestinationOps.tokens(targets, home: RMJHome())
+        let byOwner = Dictionary(grouping: targets, by: owner(of:))
+        // One token per GitHub owner, on every box: a repo reuses a token already stored for its owner, here or on any other destination.
+        let everyTarget = Set(rules.destinations.values.flatMap { $0.runnerTargets ?? [] })
+        let known = DestinationOps.tokens(Array(everyTarget), home: RMJHome())
+        for (_, covered) in byOwner {
+            let ownerToken = covered.compactMap { found[$0] }.first
+                ?? known.first { owner(of: $0.key) == owner(of: covered[0]) }?.value
+            guard let token = ownerToken else { continue }
+            for target in covered where found[target] == nil && (try? Keychain().write(token, account: "rmj.pat.\(target)")) != nil {
+                found[target] = token
+            }
+        }
         groups = byOwner.keys.sorted().map { owner in
             let covered = byOwner[owner] ?? []
             return (owner, covered, covered.allSatisfy { found[$0] != nil })

@@ -98,7 +98,11 @@ public enum RulesValidation {
         // Two companies never mix: a destination's runners may only serve its own tenant's owners and repos.
         for (name, destination) in rules.destinations {
             let tenant = rules.tenants[destination.tenant]
-            for target in destination.runnerTargets ?? [] where !Self.tenant(tenant, owns: target, others: rules.tenants.filter { $0.key != destination.tenant }.map(\.value)) {
+            // A shared tenant (one person's own repos) is not a company: any box may serve its repos.
+            let sharedTenants = rules.tenants.filter { $0.key != destination.tenant && $0.value.shared == true }.map(\.value)
+            for target in destination.runnerTargets ?? []
+            where !Self.tenant(tenant, owns: target, others: rules.tenants.filter { $0.key != destination.tenant }.map(\.value))
+                && !sharedTenants.contains(where: { Self.tenant($0, owns: target) }) {
                 throw RulesError(message: "destination \(name) serves runner target \"\(target)\", which tenant \"\(destination.tenant)\" does not own")
             }
             let served = Set((destination.runnerTargets ?? []).map { $0.lowercased() })
