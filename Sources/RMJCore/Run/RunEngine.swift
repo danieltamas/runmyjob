@@ -132,6 +132,10 @@ public struct RunEngine: Sendable {
                 notice("rmj: not run, a box was required and the ledger is unavailable (\(UntrustedText.clean(error.localizedDescription)))")
                 return RunResult(jobID: id, exitCode: 3, state: .failed)
             }
+            if CapacityWait.isCapacity(decision.fallbackReason) {
+                notice("rmj: not run, no room on the box after waiting and the ledger is unavailable")
+                return RunResult(jobID: id, exitCode: 3, state: .failed)
+            }
             notice("rmj: the ledger is unavailable (\(UntrustedText.clean(error.localizedDescription))); running on this Mac without a record")
             let code = await runUntracked(request)
             return RunResult(jobID: id, exitCode: code, state: code == 0 ? .done : .failed)
