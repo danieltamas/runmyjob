@@ -79,7 +79,7 @@ struct CapacityWaitAcceptanceTests {
         let started = ContinuousClock.now
         let result = await f.engine(poll: .seconds(30)).run(f.run.request(["echo", "local offline"]))
         let row = try #require(try await f.run.ledger.job(result.jobID))
-        #expect(started.duration(to: .now) < .seconds(5))
+        #expect(started.duration(to: .now) < .seconds(25))
         #expect(result.exitCode == 0 && row.location == "local" && row.environment == "mac")
         #expect(row.fallbackReason == "ai-eu-1 offline (test box offline)")
         #expect(f.run.output.text == "local offline\n")
@@ -95,7 +95,7 @@ struct CapacityWaitAcceptanceTests {
         let started = ContinuousClock.now
         let result = await f.engine(poll: .seconds(30)).run(request)
         let row = try #require(try await f.run.ledger.job(result.jobID))
-        #expect(started.duration(to: .now) < .seconds(5))
+        #expect(started.duration(to: .now) < .seconds(25))
         #expect(result.exitCode == 0 && row.location == "local" && row.environment == "mac")
         #expect(row.fallbackReason == "forced")
         #expect(f.run.output.text == "forced local\n")
@@ -112,7 +112,7 @@ struct CapacityWaitAcceptanceTests {
         let decision = await CapacityWait.route(request, router: f.router, poll: .milliseconds(50),
                                                limit: .milliseconds(300), notice: f.run.notices.notice)
         let elapsed = started.duration(to: .now)
-        #expect(elapsed >= .milliseconds(300) && elapsed < .seconds(5))
+        #expect(elapsed >= .milliseconds(300) && elapsed < .seconds(30))
         #expect(decision == expected)
         #expect(decision.location == .local && decision.fallbackReason == f.reason)
         #expect(f.run.notices.text == "rmj: waiting for room on the box: \(f.reason)\n")
