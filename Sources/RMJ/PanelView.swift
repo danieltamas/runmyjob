@@ -156,6 +156,7 @@ struct PanelView: View {
                     }
                     .help("GitHub is polled every 15 s while a job is queued or running and every 120 s (300 s for quiet repos) otherwise. Boxes stream over ssh: the age is that of the newest frame (one every 10 s), and it grows while a box is not answering")
                     if let budget = footer.rateBudget { Text(budget).font(.meta).foregroundStyle(Theme.warn).lineLimit(1) }
+                    if let problem = footer.githubProblem { Text(problem).font(.meta).foregroundStyle(Theme.warn).lineLimit(1).truncationMode(.tail).help(problem) }
                 }
             }
             Spacer(minLength: 8)

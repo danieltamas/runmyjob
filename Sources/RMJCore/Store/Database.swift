@@ -18,10 +18,11 @@ public enum SQLValue: Sendable, Equatable {
 
 public typealias Row = [String: SQLValue]
 
-public struct DatabaseError: Error, Equatable, CustomStringConvertible {
+public struct DatabaseError: Error, Equatable, CustomStringConvertible, LocalizedError {
     public let code: Int32
     public let message: String
     public var description: String { "sqlite \(code): \(message)" }
+    public var errorDescription: String? { description }
 }
 
 /// The ledger's SQLite file. The actor serialises this process's use of the connection; WAL and

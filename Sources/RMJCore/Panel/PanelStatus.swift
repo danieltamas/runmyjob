@@ -56,8 +56,10 @@ public struct PanelFooter: Sendable, Equatable {
 
     public let polls: [String]
     public let rateBudget: String?
+    public let githubProblem: String?
 
-    public init(githubPolledAt: Date?, boxesPolledAt: Date?, rateRemaining: Int?, now: Date) {
+    public init(githubPolledAt: Date?, boxesPolledAt: Date?, rateRemaining: Int?, githubProblem: String? = nil, now: Date) {
+        self.githubProblem = githubProblem
         func age(_ label: String, _ date: Date?) -> String {
             date.map { "\(label) \(PanelFormat.wait(now.timeIntervalSince($0)))" } ?? "\(label) -"
         }

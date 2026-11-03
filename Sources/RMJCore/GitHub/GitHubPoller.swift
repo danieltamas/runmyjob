@@ -27,6 +27,7 @@ public actor GitHubPoller {
     private let now: @Sendable () -> Date
     private struct RateLimited: Error {}
     private var polling = Set<String>()
+    private var failures = [String: String]()
     private var tableReady = false
     private var rateLimitedUntilStored: Date?
     private var ownerRepos = [String: (at: Date, repos: [String])]()
@@ -101,6 +102,7 @@ public actor GitHubPoller {
                 if listedOwners.contains(owner) || globs.contains(where: { Glob.matches($0, lower) }) { repos.insert(name) }
             }
         }
+        failures = failures.filter { repos.contains($0.key) }
         return repos.sorted()
     }
 
@@ -134,7 +136,23 @@ public actor GitHubPoller {
         // A second poll of the same repo while one is in flight would race on the checkpoint; it is a no-op.
         guard polling.insert(repo).inserted else { return GitHubPollResult() }
         defer { polling.remove(repo) }
-        do { return try await pollOnce(repo: repo) } catch is RateLimited { return GitHubPollResult(rateLimited: true) }
+        do {
+            let result = try await pollOnce(repo: repo)
+            failures[repo] = nil
+            return result
+        } catch is RateLimited {
+            return GitHubPollResult(rateLimited: true)
+        } catch {
+            failures[repo] = GitHubText.clean(error.localizedDescription, limit: 160)
+            throw error
+        }
+    }
+
+    /// The panel footer line for repos whose last poll failed; nil when every repo polls cleanly.
+    public func failureNote() -> String? {
+        guard let first = failures.min(by: { $0.key < $1.key }) else { return nil }
+        let more = failures.count > 1 ? " (and \(failures.count - 1) more)" : ""
+        return "GitHub polling failed for \(first.key): \(first.value)\(more)"
     }
 
     /// Any failure (a rate limit, a bad answer, a decoding error) leaves the checkpoint where it was, so the
@@ -306,6 +324,11 @@ public actor GitHubPoller {
         var patch = JobPatch()
         patch.startedAt = job.startedAt
         patch.endedAt = state.isSettled ? job.completedAt ?? now : nil
+        if known[id] == nil, let stored = try await ledger.job(id), let storedInfo = GitHubJobInfo.decode(stored.github) {
+            // The repo was renamed: GitHub serves the old runs under the new name, the ledger has them under the old one.
+            try await ledger.setRepo(id, repo)
+            known[id] = Known(state: stored.state, info: storedInfo, command: stored.command)
+        }
         if let existing = known[id] {
             if existing.state != state {
                 try await ledger.advance(id, to: state, at: job.completedAt ?? job.startedAt ?? now, detail: job.conclusion, patch: patch)

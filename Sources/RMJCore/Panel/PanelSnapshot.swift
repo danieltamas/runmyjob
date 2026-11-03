@@ -16,6 +16,8 @@ public struct PanelSnapshot: Sendable {
     public var githubPolledAt: Date?
     public var boxesPolledAt: Date?
     public var rateRemaining: Int?
+    /// Why GitHub polling is failing or paused, when it is; shown in the footer.
+    public var githubProblem: String?
     /// A failure has landed that the Jobs tab has not shown yet.
     public var unseenFailure: Bool
     /// Settled jobs of the last 30 days that the Jobs tab no longer shows.
@@ -93,6 +95,6 @@ public struct PanelSnapshot: Sendable {
     public var icon: MenuBarIconState { .resolve(tailnet: tailnet.standing, running: runningCount, unseenFailure: unseenFailure) }
     public var tailnetChip: TailnetChip { TailnetChip(tailnet, now: now) }
     public var footer: PanelFooter {
-        PanelFooter(githubPolledAt: githubPolledAt, boxesPolledAt: boxesPolledAt, rateRemaining: rateRemaining, now: now)
+        PanelFooter(githubPolledAt: githubPolledAt, boxesPolledAt: boxesPolledAt, rateRemaining: rateRemaining, githubProblem: githubProblem, now: now)
     }
 }

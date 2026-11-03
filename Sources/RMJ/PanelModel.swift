@@ -59,6 +59,7 @@ final class PanelModel: ObservableObject {
         didSet { pace.set("settings", onScreen: destinationsPaneShowing) }
     }
     private var githubPolledAt: Date?
+    private var githubProblem: String?
     private var boxesPolledAt: Date?
     private var probing = false
     private var orphansSettledAt: Date?
@@ -219,6 +220,7 @@ final class PanelModel: ObservableObject {
                 }
                 if let background = self?.background {
                     self?.githubPolledAt = await background.githubPolledAt
+                    self?.githubProblem = await background.footerNote
                     self?.boxesPolledAt = await background.boxesPolledAt
                 }
                 self?.refreshStream()
@@ -320,6 +322,7 @@ final class PanelModel: ObservableObject {
         var next = fresh
         if case .valid(let rules, _)? = fresh.rulesState { TenantPalette.shared.update(rules) }
         next.githubPolledAt = githubPolledAt
+        next.githubProblem = githubProblem
         // The newest frame any box sent: it ages while the boxes are quiet.
         next.boxesPolledAt = probes.values.map(\.probedAt).max() ?? boxesPolledAt
         let failures = Set(fresh.jobs.filter { $0.state == .failed || $0.state == .lost }.map(\.id))

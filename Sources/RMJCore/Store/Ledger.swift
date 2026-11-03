@@ -73,6 +73,11 @@ public struct Ledger: Sendable {
             """, [.optional(scrub(json)), .optional(scrub(destination)), .optional(scrub(destination)), .optional(scrub(destination)), .text(id)])
     }
 
+    /// A renamed GitHub repo keeps its job ids: the rows stored under the old name move to the new one.
+    public func setRepo(_ id: String, _ repo: String) async throws {
+        try await database.execute("UPDATE job SET repo = ? WHERE id = ?", [.text(scrub(repo)), .text(id)])
+    }
+
     /// A job that could not start where it was routed runs on the Mac instead: only a job that has not
     /// started running moves, and the reason is recorded.
     @discardableResult

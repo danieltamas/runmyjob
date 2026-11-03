@@ -54,6 +54,7 @@ public actor AppBackground {
                 if let poller {
                     if Date().timeIntervalSince(reposAt) > 60 { repos = (try? await poller.watchedRepos()) ?? repos; reposAt = Date() }
                     for name in repos where due[name, default: .distantPast] <= Date() {
+                        // A failed poll is shown in the footer (failureNote) and retried at the idle interval.
                         guard let result = try? await poller.poll(repo: name) else { due[name] = Date().addingTimeInterval(GitHubPoller.idleInterval); continue }
                         githubPolledAt = Date()
                         due[name] = Date().addingTimeInterval(result.rateLimited ? GitHubPoller.idleInterval : (try? await poller.interval(for: name)) ?? GitHubPoller.idleInterval)
@@ -62,7 +63,7 @@ public actor AppBackground {
                         archivedAt = Date()
                         await archiveFailedLogs(ledger: context.ledger, archive: context.archive, tokens: tokens ?? { _ in nil })
                     }
-                    footerNote = await poller.rateLimitedUntil() != nil ? await poller.footer() : nil
+                    footerNote = await poller.rateLimitedUntil() != nil ? await poller.footer() : await poller.failureNote()
                 }
                 // Off the loop: a stalled ssh to a box must not hold up polling, reconciling or log draining.
                 if !scalingRunning {
