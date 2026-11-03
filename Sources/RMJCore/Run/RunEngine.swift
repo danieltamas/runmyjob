@@ -137,6 +137,10 @@ public struct RunEngine: Sendable {
             return RunResult(jobID: id, exitCode: code, state: code == 0 ? .done : .failed)
         }
         if let advisory = decision.advisory { notice("rmj: \(advisory)") }
+        // Still full after the wait (or cancelled during it): not run, never on the Mac behind a box that only had no room.
+        if CapacityWait.isCapacity(decision.fallbackReason) {
+            return await refuse(id, reason: "no room after waiting: \(decision.fallbackReason ?? "box full")")
+        }
         if request.agentTask?.requireBox == true, destination == nil {
             return await refuse(id, reason: decision.fallbackReason ?? "no box serves this task")
         }

@@ -21,8 +21,8 @@ enum CapacityWait {
         notice("rmj: waiting for room on the box: \(decision.fallbackReason ?? "full")")
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: limit)
-        while isCapacity(decision.fallbackReason), clock.now < deadline, !Task.isCancelled {
-            try? await Task.sleep(for: poll)
+        while isCapacity(decision.fallbackReason), clock.now < deadline {
+            do { try await Task.sleep(for: poll) } catch { break }
             decision = await router.route(request).sanitized()
         }
         return decision

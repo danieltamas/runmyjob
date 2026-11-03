@@ -20,6 +20,14 @@ public enum TreeSync {
 
     static let fixedExcludes = ["/.git", "/.worktrees", "/.claude/worktrees", "/target", "node_modules", "/graphify-out",
                                 "/brag-output", ".DS_Store", "/.rmj", "/.rmj-worktree"]
+    /// Env files the sync still carries: templates and test defaults, which hold no secrets by convention.
+    static let envTemplates = [".env.example", ".env.sample", ".env.template", ".env.test", ".env.defaults"]
+
+    /// `.env` and `.env.*` except the templates above: they stay on the Mac.
+    static func isEnvFile(_ name: String) -> Bool {
+        name == ".env" || (name.hasPrefix(".env.") && !envTemplates.contains(name))
+    }
+
     /// The box's own files in the synced directory: never deleted by the mirror.
     static let protected = ["/.rmj-worktree", "/.rmj"]
 
@@ -41,9 +49,11 @@ public enum TreeSync {
         let honorsProtect = !(version.map { String(decoding: $0.stdout, as: UTF8.self).contains("openrsync") } ?? true)
         var arguments = ["-rlptDz", "--delete", "--safe-links", "--from0"]
         if honorsProtect { arguments += ["--delete-excluded"] + protected.flatMap { ["--filter", "P \($0)"] } }
-        // Env files never leave the Mac, whether or not the repo git-ignores them: a prod `.env` on a box is auto-loaded by bun.
-        arguments += ["--include", ".env.example", "--exclude", ".env", "--exclude", ".env.*"]
-        arguments += ["--exclude-from=\(list.path)"] + fixedExcludes.flatMap { ["--exclude", $0] }
+        // The git-ignored list comes first so an ignored `.env.example` stays out; then env files never leave the Mac whether
+        // or not the repo ignores them (a prod `.env` on a box is auto-loaded by bun), except the usual non-secret templates.
+        arguments += ["--exclude-from=\(list.path)"]
+        arguments += envTemplates.flatMap { ["--include", $0] } + ["--exclude", ".env", "--exclude", ".env.*"]
+        arguments += fixedExcludes.flatMap { ["--exclude", $0] }
         if let shell { arguments += ["-e", shell] }
         arguments += [worktree.path + "/", destination]
         let output = try await runner.run(rsync, arguments, timeout: .seconds(1800))
@@ -77,6 +87,7 @@ public enum TreeSync {
     /// Whether the sync leaves this tracked path out: the same rules as `fixedExcludes`, for code that has to agree with it.
     static func isExcluded(_ path: String) -> Bool {
         let parts = path.split(separator: "/").map(String.init)
+        if parts.last.map(isEnvFile) == true { return true }
         return fixedExcludes.contains { pattern in
             if pattern.hasPrefix("/") {
                 let anchored = pattern.dropFirst().split(separator: "/").map(String.init)
