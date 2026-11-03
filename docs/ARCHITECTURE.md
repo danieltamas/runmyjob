@@ -305,7 +305,8 @@ nothing when the fresh check lists a path the confirmed one did not. A rejected 
 
 ## Keychain
 
-Items `rmj.pat.<target>` (one per runner target), created from Settings > Destinations with the
+Items `rmj.pat.<target>` (one per runner target; the Tokens sheet copies a stored token to every other
+target of the same GitHub owner, on any destination), created from Settings > Destinations with the
 PAT pasted once, readable by the app and the CLI (same signing identity, access group), never
 exported. No file on a box holds a PAT: a deploy sends the values on the stdin of the ssh command that runs
 `docker compose build/up/rm`, whose first step reads and exports them for that process alone, so compose

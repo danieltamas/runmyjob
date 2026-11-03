@@ -1,5 +1,10 @@
 # LOG
 
+## 0.14.1 (2026-11-03)
+
+- A box can now run CI for your own repos. Setting a runner target on a Gamerina box for a repo of your `personal` tenant (a shared tenant, one person's own repos) was refused with "which tenant does not own". A shared tenant is not a company, so any box may serve its repos; a repo of a company tenant is still refused on another company's box. Behavior change: runner targets owned by a shared tenant are accepted on every destination.
+- One GitHub token per owner, on every box. Adding a second repo of the same owner showed the token as "missing" and asked for it again, because RMJ keeps one Keychain item per repo. The Tokens sheet now copies a token already stored for that owner, from this box or any other, to the new repo, so the same token covers all your repos. A token that cannot see a repo still fails at Set up / repair, which says so. Not verified live: registering a runner for a personal repo on a box.
+- Behavior to know: the tenant pane's Add field still refuses patterns such as `owner/app*`; give it the exact `owner/name`.
 ## 0.14.0 (2026-11-02)
 
 - A renamed GitHub repo no longer strands its runner. When `lexito.ro` became `kazu`, the box runner kept asking for the old name, GitHub answered with a redirect, no token was issued and the jobs queued with "0 online". RMJ now checks every repo your rules name every 10 minutes (the first check only records each repo's GitHub id). When a repo comes back under a new name with the same owner and the same id, RMJ updates the rules, copies the Keychain token to the new name, renames the box's service in its runner extras and sets the box up again, and tells you. A box that is off is set up when it returns.
