@@ -1,5 +1,11 @@
 # LOG
 
+## 0.17.0 (2026-11-04)
+
+- GitHub jobs of a renamed repo no longer stay "running" forever. After `lexito.ro` became `kazu`, GitHub served the old runs under the new name while the ledger held them under the old one; every poll of the repo tried to store them again, failed on a duplicate job id, and stopped after the first job, so finished jobs kept showing as running (a 4-minute gate showed 21 minutes). The poller now moves such rows to the new name and carries on.
+- A failing GitHub poll now shows in the panel footer ("GitHub polling failed for <repo>: <reason>", hover for the full text) instead of failing silently, and clears when the repo polls cleanly again. The GitHub rate-limit pause is shown there too; it was computed but never displayed.
+- Database errors in the `rmj` command now print the real SQLite message instead of "error 1".
+- Not verified: the footer message itself (no poll was failing to trigger it) and a rename of another repo end to end; the fix was confirmed by polling kazu by hand, which moved 587 rows and settled the stuck jobs. No tests were added for either change.
 ## 0.16.0 (2026-11-03)
 
 - A full box no longer sends your job to the Mac. When every box a rule names was skipped only because it was full (at `max_jobs` or over its memory budget), `rmj run` now prints `rmj: waiting for room on the box: <reason>`, checks again every 10 seconds, and runs on the box as soon as there is room. If there is still no room after two hours the job is not run (exit 3, with the reason) rather than run on the Mac, and Ctrl-C while waiting stops it. Before this, a second demoanaf run started while the first used the box's memory ran on the Mac, where the real `gateway/.env` is and the test services are not. A box that is offline, a tenant deny, no matching rule and `RX_LOCAL=1` still fall back at once. Known gap: a waiting job has no row in the panel until it starts; only the terminal shows the wait.
