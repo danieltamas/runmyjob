@@ -112,8 +112,8 @@ public struct RunEngine: Sendable {
         let queuedAt = now()
         let id = ULID.make(now: queuedAt)
         let routed = request.shell ? request.command.joined(separator: " ").split(separator: " ").map(String.init) : request.command
-        let decision = await router.route(RouteRequest(command: routed, identity: request.identity, forceLocal: request.forceLocal,
-                                                       destination: request.destination)).sanitized()
+        let decision = await CapacityWait.route(RouteRequest(command: routed, identity: request.identity, forceLocal: request.forceLocal,
+                                                             destination: request.destination), router: router, poll: boxLoadInterval, notice: notice)
         var destination: String?
         if case .destination(let name, _) = decision.location { destination = name }
         var job = JobRecord(id: id, repo: request.identity.slug ?? URL(fileURLWithPath: request.identity.worktree).lastPathComponent,

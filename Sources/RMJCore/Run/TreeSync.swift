@@ -41,6 +41,8 @@ public enum TreeSync {
         let honorsProtect = !(version.map { String(decoding: $0.stdout, as: UTF8.self).contains("openrsync") } ?? true)
         var arguments = ["-rlptDz", "--delete", "--safe-links", "--from0"]
         if honorsProtect { arguments += ["--delete-excluded"] + protected.flatMap { ["--filter", "P \($0)"] } }
+        // Env files never leave the Mac, whether or not the repo git-ignores them: a prod `.env` on a box is auto-loaded by bun.
+        arguments += ["--include", ".env.example", "--exclude", ".env", "--exclude", ".env.*"]
         arguments += ["--exclude-from=\(list.path)"] + fixedExcludes.flatMap { ["--exclude", $0] }
         if let shell { arguments += ["-e", shell] }
         arguments += [worktree.path + "/", destination]
