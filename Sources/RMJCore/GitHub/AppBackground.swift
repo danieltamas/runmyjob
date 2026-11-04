@@ -32,6 +32,7 @@ public actor AppBackground {
         guard let context = try? await RunCommand.open(environment: environment) else { return }
         var poller: GitHubPoller?
         var due = [String: Date]()
+        var period = [String: TimeInterval]()
         var repos: [String] = []
         var reposAt = Date.distantPast
         var reconciledAt = Date.distantPast
@@ -53,11 +54,22 @@ public actor AppBackground {
                 }
                 if let poller {
                     if Date().timeIntervalSince(reposAt) > 60 { repos = (try? await poller.watchedRepos()) ?? repos; reposAt = Date() }
-                    for name in repos where due[name, default: .distantPast] <= Date() {
+                    // One poll takes about a second and hundreds of quiet repos are due, so a sweep in list order kept a repo with a
+                    // running job waiting for minutes. Each step polls the most urgent due repo: the shortest interval first (queued or
+                    // running, then a run in the last day, then quiet), the longest overdue among equals. A slice of 20 s at most, so
+                    // the rest of the round (archiving, scaling, the footer) is not held up behind the sweep.
+                    for name in repos where period[name] == nil { period[name] = (try? await poller.interval(for: name)) ?? GitHubPoller.quietInterval }
+                    let slice = Date()
+                    while Date().timeIntervalSince(slice) < 20,
+                          let name = repos.filter({ due[$0, default: .distantPast] <= Date() }).min(by: {
+                              (period[$0] ?? GitHubPoller.quietInterval, due[$0, default: .distantPast]) < (period[$1] ?? GitHubPoller.quietInterval, due[$1, default: .distantPast])
+                          }) {
                         // A failed poll is shown in the footer (failureNote) and retried at the idle interval.
                         guard let result = try? await poller.poll(repo: name) else { due[name] = Date().addingTimeInterval(GitHubPoller.idleInterval); continue }
                         githubPolledAt = Date()
-                        due[name] = Date().addingTimeInterval(result.rateLimited ? GitHubPoller.idleInterval : (try? await poller.interval(for: name)) ?? GitHubPoller.idleInterval)
+                        let wait = result.rateLimited ? GitHubPoller.idleInterval : (try? await poller.interval(for: name)) ?? GitHubPoller.idleInterval
+                        period[name] = wait
+                        due[name] = Date().addingTimeInterval(wait)
                     }
                     if Date().timeIntervalSince(archivedAt) >= 60 {
                         archivedAt = Date()
