@@ -96,11 +96,18 @@ public struct ProcessRunner: Sendable {
         await withCheckedContinuation { continuation in
             DispatchQueue.global().async {
                 var data = Data()
+                var open = true
                 // `availableData` returns what a pipe holds now and is empty only at EOF. Reading continues
                 // past the cap so the child never blocks on a full pipe, but nothing more is kept.
-                while case let chunk = handle.availableData, !chunk.isEmpty {
-                    output?(chunk)
-                    if keep, data.count < collectedLimit { data.append(chunk.prefix(collectedLimit - data.count)) }
+                // Each chunk is an autoreleased NSData and a dispatch thread drains its pool only when this
+                // block returns, so without a pool per read a stream that runs for days keeps every chunk.
+                while open {
+                    autoreleasepool {
+                        let chunk = handle.availableData
+                        guard !chunk.isEmpty else { open = false; return }
+                        output?(chunk)
+                        if keep, data.count < collectedLimit { data.append(chunk.prefix(collectedLimit - data.count)) }
+                    }
                 }
                 continuation.resume(returning: data)
             }
