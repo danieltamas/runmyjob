@@ -1,5 +1,11 @@
 # LOG
 
+## 0.17.1 (2026-11-07)
+
+- RMJ no longer grows by about 3 GB a day. Every 16 KB of output RMJ read from a box stream (the live sensors and logs that stay open for days) was kept in memory until the stream ended, which a box stream never does: after three days the app held 9.4 GB, almost all of it pushed to swap. Each read is now released as soon as it is handled. Quitting and reopening an older version frees the memory, but it grows again until you update.
+- A running GitHub job now settles within its poll interval. RMJ polled your repos in list order, about a second each, so with hundreds of quiet repos due at once a repo with a running job could wait minutes for its turn. Each step now polls the most urgent repo first (queued or running, then active in the last day, then quiet), and a sweep yields after 20 seconds so the rest of the panel keeps updating.
+- Not verified: the memory staying flat over a day of streaming (the cause was confirmed in a heap dump of the running app: 580,153 retained 16 KB buffers) and a running job settling under load. No tests were added for either change.
+
 ## 0.17.0 (2026-11-04)
 
 - GitHub jobs of a renamed repo no longer stay "running" forever. After `lexito.ro` became `kazu`, GitHub served the old runs under the new name while the ledger held them under the old one; every poll of the repo tried to store them again, failed on a duplicate job id, and stopped after the first job, so finished jobs kept showing as running (a 4-minute gate showed 21 minutes). The poller now moves such rows to the new name and carries on.
