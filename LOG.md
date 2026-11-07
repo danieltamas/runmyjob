@@ -1,5 +1,9 @@
 # LOG
 
+## 0.17.2 (2026-11-08)
+
+- Settings > About no longer says "built from source" for a release you installed. Every release carries its own tag in the app bundle, and About added "built from source" whenever any tag was there, so every install since 0.1.0 looked like a local build. It now shows just the version (`v0.17.2`); a build from a checkout still says `v0.17.2 + 2 commits (abc1234), built from source`, and one with uncommitted changes says so. Update checks were never affected.
+
 ## 0.17.1 (2026-11-07)
 
 - RMJ no longer grows by about 3 GB a day. Every 16 KB of output RMJ read from a box stream (the live sensors and logs that stay open for days) was kept in memory until the stream ended, which a box stream never does: after three days the app held 9.4 GB, almost all of it pushed to swap. Each read is now released as soon as it is handled. Quitting and reopening an older version frees the memory, but it grows again until you update.
