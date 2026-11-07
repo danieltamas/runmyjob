@@ -131,7 +131,8 @@ struct AboutPane: View {
         } else if let source, !source.isEmpty {
             line += " (\(source))"
         }
-        if info?["RMJSource"] != nil { line += ", built from source" }
+        // A release is stamped with its own tag (scripts/release.sh), so only a build from any other commit is "from source".
+        if let source, source != "v\(version)" || dirty { line += ", built from source" }
         if dirty { line += ", uncommitted changes" }
         return line
     }
