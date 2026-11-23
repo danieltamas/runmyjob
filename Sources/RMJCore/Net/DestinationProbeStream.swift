@@ -22,11 +22,12 @@ extension DestinationProbe {
     public static let heavySections = ["docker", "containers"]
     public static let rareSections = ["rsync", "images", "nproc", "diskhealth", "osname", "virt", "tools"]
 
-    /// Variables used by the light snippets: out, rc, k, v, t, f, r, n, rx, tx, ifc, nl. Never `i`, the turn counter.
-    /// Each snippet leaves its answer in `$out`; none of them starts a process except where `maximumCommands` says so.
-    /// Arithmetic only ever sees digits: a malformed line must not abort the shell.
+    /// Variables used by the light snippets: out, rc, k, v, t, f, r, n, rx, tx, ifc, nl, dk. They read `i`, the turn counter,
+    /// and `disk_every`, never write them. Each snippet leaves its answer in `$out`; none of them starts a process except where
+    /// `maximumCommands` says so (the box's audit log records every one). Arithmetic only ever sees digits: a malformed line must
+    /// not abort the shell.
     private static let lightCommands: [(name: String, command: String, maximumCommands: Int)] = [
-        ("clock", "out=$(date +%s%N)", 1),
+        ("clock", clockReading, 0),
         ("mem", meminfo("MemAvailable:"), 0),
         ("memtotal", meminfo("MemTotal:"), 0),
         ("load", "read -r out _ < /proc/loadavg", 0),
@@ -41,9 +42,16 @@ extension DestinationProbe {
         ("psi", #"for r in cpu memory; do [ -r /proc/pressure/$r ] && { read -r k v _ < /proc/pressure/$r; [ "$k" = some ] && out="$out$r ${v#*=}$nl"; }; done; true"#, 0),
         ("hwmon", #"for f in /sys/class/hwmon/hwmon*/temp*_input /sys/class/thermal/thermal_zone*/temp; do [ -r "$f" ] && read -r t < "$f" && out="${out}temp $t$nl"; done; "#
             + #"for f in /sys/class/hwmon/hwmon*/fan*_input; do [ -r "$f" ] && read -r t < "$f" && out="${out}fan $t$nl"; done; true"#, 0),
-        ("disk", #"set -- $(df -Pm "$HOME" | tail -n 1); [ -n "$4" ] && out="$2 $4""#, 3),
-        ("clockend", "out=$(date +%s%N)", 1),
+        // Free space has no kernel file to read, so it costs one `df`; it moves slowly, so it is read again every `disk_every` turns
+        // and the last answer is sent in between. A failed read clears the answer: it is current or unknown, never stale.
+        ("disk", #"if [ -z "$dk" ] || [ $((i % disk_every)) -eq 0 ]; then dk=; set -- $(df -Pm "$HOME"); "#
+            + #"[ $# -ge 6 ] && { shift $(($# - 6)); case "$2$4" in ''|*[!0-9]*) ;; *) dk="$2 $4";; esac; }; fi; out=$dk; [ -n "$out" ]"#, 1),
+        ("clockend", clockReading, 0),
     ]
+
+    /// Nanoseconds since the epoch. bash 5 has the time in `$EPOCHREALTIME` (microseconds, point or comma by locale), read once
+    /// because it changes between two expansions; any other shell asks `date`.
+    private static let clockReading = #"if [ -n "$EPOCHREALTIME" ]; then t=$EPOCHREALTIME; t=${t%[.,]*}${t#*[.,]}; out=${t}000; else out=$(date +%s%N); fi"#
 
     private static func meminfo(_ key: String) -> String {
         #"while read -r k v _; do [ "$k" = \#(key) ] && case $v in ''|*[!0-9]*|0?*) ;; *) out=$((v/1024));; esac; done < /proc/meminfo; [ -n "$out" ]"#
@@ -53,26 +61,30 @@ extension DestinationProbe {
     static func streamSteps(requires: [String], images: [String]) -> [(name: String, command: String, maximumCommands: Int)] {
         let light = Set(lightSections)
         let others = (steps + toolsSteps(requires: requires, images: images)).filter { !light.contains($0.name) }
-        return lightCommands + others.map { ($0.name, $0.command, 64) }
+        return lightCommands + others.map { ($0.name, streamCommand($0.name, default: $0.command), 64) }
     }
 
     /// The loop the box runs for the whole session: a frame per turn, light every turn, heavy and rare on their turns, the counter
     /// starting at 0 so the first frame is complete. It reads and prints, opens no socket and writes no file; the one thing it starts beyond reading is the rare
     /// tools check, which runs a short container as the one-shot probe always did. When ssh goes the next write ends it.
+    /// On bash 5 a light turn starts no process at all; the box's audit log records each one (`DestinationProbeTiers.swift`).
     static func streamScript(requires: [String], images: [String], interval: Int, heavyEvery: Int, rareEvery: Int) -> String {
         let steps = streamSteps(requires: requires, images: images)
         func light(_ step: (name: String, command: String, maximumCommands: Int)) -> String {
             #"out=; { \#(step.command); } 2>/dev/null; rc=$?; printf '@@\#(step.name) rc=%s\n%s\n' "$rc" "$out""#
         }
         func tier(_ names: [String]) -> [String] {
-            steps.filter { names.contains($0.name) }.map { wrapped(($0.name, $0.command)) }
+            // The containers step runs before the docker step: the docker step reads what it reported.
+            let chosen = steps.filter { names.contains($0.name) }
+            return (chosen.filter { $0.name == "containers" } + chosen.filter { $0.name != "containers" }).map { streamWrapped(($0.name, $0.command)) }
         }
         let lightSet = Set(lightSections)
         let heavy = tier(heavySections), rare = tier(rareSections + ["tools"])
         let body = steps.filter { lightSet.contains($0.name) && $0.name != "clockend" }.map(light)
         let end = steps.first { $0.name == "clockend" }.map(light) ?? ""
         let turn = ["if [ $((i % \(max(1, heavyEvery)))) -eq 0 ]; then"] + heavy + ["fi", "if [ $((i % \(max(1, rareEvery)))) -eq 0 ]; then"] + rare + ["fi"]
-        return (["i=0", "nl='", "'", "while :; do"] + body + turn + [end, "echo @@end", "i=$((i+1))", "sleep \(interval) || exit 1", "done"]).joined(separator: "\n")
+        return (streamPrologue(rareEvery: rareEvery) + ["while :; do"] + body + turn
+                + [end, "echo @@end", "i=$((i+1))", streamWait(interval), "done"]).joined(separator: "\n")
     }
 }
 

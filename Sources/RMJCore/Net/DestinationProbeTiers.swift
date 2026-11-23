@@ -1,0 +1,74 @@
+import Foundation
+
+/// The box's audit log records every process a login session starts, and a stream lives for days: what a frame starts costs
+/// one log line each, forever. So the stream's heavy and rare tiers start as few processes as they can. The light tier starts
+/// none (see `lightCommands`); this file is the rest.
+extension DestinationProbe {
+    /// Facts that cannot change while a session lasts: read once, replayed on every later turn of their tier. The value is the
+    /// test an exit status must pass to be kept (`systemd-detect-virt` exits 1 and prints `none` on bare metal). A status that
+    /// fails the test is read again on the next turn, so a tool installed later is still found.
+    private static let sessionFacts: [String: String] = ["rsync": "-eq 0", "nproc": "-eq 0", "osname": "-eq 0", "virt": "-le 1"]
+
+    /// The commands that differ from the one-shot probe's. They print the same lines.
+    private static let streamCommands: [String: String] = [
+        // One `docker ps` for the three sets (a rx job, an RMJ job, a runner) instead of one each plus a dedup. Labels print as
+        // `k=v,k=v`, and `--label rx` has an empty value, so a key is found by its `=`.
+        "containers": #"ps=$(docker ps --format '{{.ID}} {{.Names}} {{.Labels}}') "#
+            + #"&& ids=$(printf '%s\n' "$ps" | while read -r id nm lb; do case ",$lb" in (*,rx=*|*,rmj.job=*) echo "$id";; (*) case $nm in (runner-*) echo "$id";; esac;; esac; done) "#
+            + #"&& { [ -z "$ids" ] || docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}}' $ids; }"#,
+        // The same four signals; `df | awk`, `lsblk | awk` and `smartctl | grep` become shell reads, and the disk list, which a
+        // session cannot change, is read once into `$dsk` by `diskList`.
+        "diskhealth": #"o=$(findmnt -no OPTIONS -T "$HOME" 2>/dev/null) && { case ",$o," in (*,ro,*) echo ro 1;; (*) echo ro 0;; esac; }; "#
+            + #"set -- $(df -Pi "$HOME"); [ $# -ge 6 ] && { shift $(($# - 6)); echo "inodes ${5%\%}"; }; "#
+            + #"m=$(dmesg 2>/dev/null) && [ -n "$m" ] && echo "ioerr $(printf '%s\n' "$m" | grep -ciE 'i/o error|ext4-fs error|xfs.*(corrupt|error)|btrfs.*error|blk_update_request|nvme.*(timeout|reset)')"; "#
+            + #"for d in $dsk; do r=$(smartctl -H "$d" 2>/dev/null | while read -r l; do case $l in (*[Oo]verall-health*|*SMART\ Health\ Status*) echo "$l";; esac; done); "#
+            + #"case "$r" in (*FAILED*) echo smart failed;; (*PASSED*|*OK*) echo smart passed;; esac; done; true"#,
+    ]
+
+    /// The disks `smartctl` is asked about, listed once per session and only where `smartctl` exists.
+    private static let diskList = #"[ -n "${dsk+x}" ] || { dsk=; command -v smartctl >/dev/null 2>&1 && dsk=$(lsblk -dno NAME,TYPE 2>/dev/null | while read -r nm ty; do [ "$ty" = disk ] && echo "/dev/$nm"; done); }; "#
+
+    static func streamCommand(_ name: String, default command: String) -> String { streamCommands[name] ?? command }
+
+    /// `$out` capped at `bodyCap`. bash cuts it with a parameter expansion; any other shell pipes it through `head`.
+    static var capFunction: String {
+        #"cap() { if [ -n "$BASH_VERSION" ]; then eval 'printf "%s\n" "${out:0:\#(bodyCap)}"'; else printf '%s\n' "$out" | head -c \#(bodyCap); fi; }"#
+    }
+
+    /// One heavy or rare step: its status in a header and its capped output. Always one line, so a tier stays one block.
+    static func streamWrapped(_ step: (name: String, command: String)) -> String {
+        let header = #"printf '@@\#(step.name) rc=%s\n' "$rc"; cap; echo"#
+        let run = "out=$(\(step.command) 2>&1); rc=$?"
+        switch step.name {
+        case let name where sessionFacts[name] != nil:
+            let held = "c_\(name)", keep = sessionFacts[name] ?? "-eq 0"
+            return #"if [ -z "$\#(held)" ]; then \#(run); [ $rc \#(keep) ] && \#(held)="$rc:$out"; else rc=${\#(held)%%:*}; out=${\#(held)#*:}; fi; \#(header)"#
+        case "tools":
+            // Images change when someone pulls or builds one: asked for on the first rare turn and every third one after, replayed
+            // in between (the replay keeps the section inside its three-period life).
+            return #"if [ -z "$c_tools" ] || [ $((i % (3 * rare_every))) -eq 0 ]; then \#(run); c_tools="$rc:$out"; else rc=${c_tools%%:*}; out=${c_tools#*:}; fi; \#(header)"#
+        case "containers":
+            return "\(run); ps_rc=$rc; \(header)"
+        case "docker":
+            // The containers step ran first: a `docker ps` that worked says the daemon answers, and the version it reported is
+            // asked for again only when it was never read, when that failed, and on the rare tier's turns.
+            return #"if [ -n "$dv" ] && [ "$ps_rc" = 0 ] && [ $((i % rare_every)) -ne 0 ]; then rc=0; out=$dv; else \#(run); dv=; [ $rc -eq 0 ] && dv=$out; fi; \#(header)"#
+        case "diskhealth":
+            return "\(diskList)\(run); \(header)"
+        default:
+            return "\(run); \(header)"
+        }
+    }
+
+    /// Everything before the loop: the turn counter, the two periods the light and heavy snippets read, `cap`, and the sleep.
+    /// bash waits with `read -t` on a coprocess that never writes (a built-in that starts no program); anything else, or a
+    /// coprocess that died, waits with `sleep`.
+    static func streamPrologue(rareEvery: Int) -> [String] {
+        ["i=0", "nl='", "'", "disk_every=\(max(1, rareEvery))", "rare_every=\(max(1, rareEvery))", capFunction, "nap=0",
+         #"if [ -n "$BASH_VERSION" ]; then eval 'coproc NAP { read -r _; }' 2>/dev/null && eval 'napfd=${NAP[0]}' && nap=1; fi"#]
+    }
+
+    static func streamWait(_ interval: Int) -> String {
+        #"if [ "$nap" = 1 ]; then read -t \#(interval) -u "$napfd" _; [ $? -gt 128 ] || sleep \#(interval) || exit 1; else sleep \#(interval) || exit 1; fi"#
+    }
+}

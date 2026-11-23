@@ -493,3 +493,12 @@ Optional log streaming, the Run report window, and no Open log button on a queue
 - Settings > Tenants: each tenant is a collapsed card (colour mark, name, what it holds); one opens at a time to edit. "Remove tenant" asks twice and is refused while a box or rule still names the tenant.
 - Process: tests by Codex (`AgentSessionAcceptanceTests`); Codex review in docs/reviews/u19-2026-11-01.md (P1 transcript may hold a login the agent printed: accepted and documented; P2 tenant in the session key: not applicable). 641 tests; scripts/check.sh failed once under load and passed on rerun.
 - Not verified: the live `--session-id` then `--resume` run on a box (blocked: the Mac's Claude login expires soon, so `--require-box` refuses), and the Tenants pane in the installed app.
+
+## 2026-11-23 - box stream stops flooding the host audit log (unreleased)
+
+- Problem: s1-digitap-eu runs auditd with `-a always,exit -S execve -F auid!=-1 -F key=audit-wazuh-c` (every exec of any login session, not only root; a uid 1000000 exec is in the log too). The 2 s light tier started date x2, sleep, df, tail per turn: 2410 EXECVE records in 10 minutes.
+- Change: on bash 5 the light tier starts no process (`$EPOCHREALTIME`, `read -t` on a coprocess for the wait, `df` every 5 min with the answer replayed). Heavy tier: one `docker ps`, no `head`, version replayed. Rare tier: rsync/nproc/osname/virt read once per session, tools replayed twice in three, disk health without awk/grep helpers, disk list once. The ssh launch runs `bash -c` where bash exists; other shells run the same script with the old programs. Protocol, 2 s cadence and section names unchanged.
+- Not done on purpose: a non-root probe user and a sudoers rule. The rule logs every login session (auid), so the user would not lower the count, and the acceptance tests forbid `sudo` in the script.
+- Measured on s1 (own ssh session, counted by audit session id): 10 min 100 records, then 70 after trimming (old: about 2400). One minute old vs new: 205 vs 40, 30 frames and the same sections each. 291/291 frames parse with the app's parser.
+- Open: 70 > 50. Remaining: docker ps + stats every 60 s (20), smartctl 8, plugin loads 4, tools 4.
+- Not run: swift test / check.sh (release only). The acceptance tests for the script text were read, not run.

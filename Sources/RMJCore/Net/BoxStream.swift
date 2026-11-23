@@ -12,7 +12,11 @@ public struct SSHStreamTransport: StreamTransport {
     public init() {}
 
     public func stream(address: String, alias: String, script: String, output: @escaping @Sendable (Data) -> Void) async throws -> Int32 {
-        let arguments = try SSH.arguments(address: address, alias: alias, command: ["sh", "-c", SSH.quote(script)])
+        // bash runs it where the box has one: the loop's clock and wait are bash built-ins, and a built-in is a process the box's
+        // audit log never sees. Without bash the same script runs under sh and starts the programs it always did.
+        let program = SSH.quote(script)
+        let launch = "if command -v bash >/dev/null 2>&1; then exec bash -c \(program); else exec sh -c \(program); fi"
+        let arguments = try SSH.arguments(address: address, alias: alias, command: ["sh", "-c", SSH.quote(launch)])
         return try await ProcessRunner().run("/usr/bin/ssh", arguments, timeout: .seconds(365 * 86_400), collectStdout: false, output: output).status
     }
 }

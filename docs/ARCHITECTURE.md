@@ -263,7 +263,7 @@ returns early on a frame, never sooner than 1 s after it started.
 The app keeps one long-lived ssh session per enabled destination (`BoxStream`, owned by `BoxStreams` in `PanelModel`)
 instead of probing it. The session runs a read-only loop on the box (`DestinationProbe.streamScript`) that prints a frame
 per turn: `@@name rc=N` sections closed by `@@end`. Tiers by cost: light every 10 s (kernel files read with shell
-builtins, three processes at most), heavy every 60 s (docker), rare every 5 min (images, disk health, tool checks). The first
+builtins; on bash 5 a light turn starts no process, because the box audit log records every one), heavy every 60 s (docker), rare every 5 min (images, disk health, tool checks). The first
 turn runs all three. `FrameAssembler` cuts frames (256 KB limit, resynchronises at the next `@@clock `), `SectionCache`
 merges them (a light frame needs every light section; heavy and rare sections stay for three periods and are then unknown,
 never shown as current). A box that stops talking for 30 s, a tailnet that no longer shows it online (looked at once a
