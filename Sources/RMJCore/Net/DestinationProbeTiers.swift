@@ -5,9 +5,10 @@ import Foundation
 /// none (see `lightCommands`); this file is the rest.
 extension DestinationProbe {
     /// Facts that cannot change while a session lasts: read once, replayed on every later turn of their tier. The value is the
-    /// test an exit status must pass to be kept (`systemd-detect-virt` exits 1 and prints `none` on bare metal). A status that
-    /// fails the test is read again on the next turn, so a tool installed later is still found.
-    private static let sessionFacts: [String: String] = ["rsync": "-eq 0", "nproc": "-eq 0", "osname": "-eq 0", "virt": "-le 1"]
+    /// `case` pattern of the exit statuses that are kept (`systemd-detect-virt` exits 1 and prints `none` on bare metal). A
+    /// status outside it is read again on the next turn, so a tool installed later is still found. A pattern, not `[ -le ]`:
+    /// the stream script must carry no ` -l` (a listener flag; `BoxStreamAcceptanceTests`).
+    private static let sessionFacts: [String: String] = ["rsync": "0", "nproc": "0", "osname": "0", "virt": "0|1"]
 
     /// The commands that differ from the one-shot probe's. They print the same lines.
     private static let streamCommands: [String: String] = [
@@ -63,8 +64,8 @@ extension DestinationProbe {
         let run = "out=$(\(step.command) 2>&1); rc=$?"
         switch step.name {
         case let name where sessionFacts[name] != nil:
-            let held = "c_\(name)", keep = sessionFacts[name] ?? "-eq 0"
-            return #"if [ -z "$\#(held)" ]; then \#(run); [ $rc \#(keep) ] && \#(held)="$rc:$out"; else rc=${\#(held)%%:*}; out=${\#(held)#*:}; fi; \#(header)"#
+            let held = "c_\(name)", keep = sessionFacts[name] ?? "0"
+            return #"if [ -z "$\#(held)" ]; then \#(run); case $rc in (\#(keep)) \#(held)="$rc:$out";; esac; else rc=${\#(held)%%:*}; out=${\#(held)#*:}; fi; \#(header)"#
         case "tools":
             // Images change when someone pulls or builds one: asked for on the first rare turn and every third one after, replayed
             // in between (the replay keeps the section inside its three-period life).
