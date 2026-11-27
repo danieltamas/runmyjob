@@ -90,6 +90,7 @@ public enum CommandGuard {
     /// A segment that is already under `rmj run` or `rx`, or opted out with RX_LOCAL=1, up to the next separator:
     /// it is dropped, so a second command after `;` is still judged.
     private static let routed = regex(#"(?:RX_LOCAL=1|rx\s|rmj\s+run(?:\s|$))[^;&|\n]*"#)
+    private static let routedStart = regex(#"(?:RX_LOCAL=1|rx\s|rmj\s+run(?:\s|$))"#)
     private static let check = regex(#"(?:cargo\s+(?:\+\S+\s+)?(?:test|check|clippy|nextest|bench|doc|deny)(?:[\s;&|)]|$)|cargo\s+fmt\s[^;&|]*--check|just\s+(?:check|test|lint|deny)(?:[\s;&|)]|$)|(?:npm|pnpm|yarn|bun)(?:\s+(?:-r|--recursive|--silent|-s|--if-present|--workspaces|-ws)|\s+(?:--prefix|--filter|-F|--workspace|-w|--cwd|-C|--dir)(?:=|\s+)\S+)*\s+(?:run\s+)?(?:test|lint|typecheck|check)(?::[\w:.-]+)?(?:[\s;&|)]|$)|(?:(?:bash|sh)\s+)?(?:\./)?scripts/check\.sh(?:[\s;&|)]|$))"#)
     private static let build = regex(#"cargo\s+(?:\+\S+\s+)?build(?:[\s;&|)]|$)"#)
     private static let changeDirectory = try! NSRegularExpression(pattern: #"(^\s*|[;&|\n]\s*)cd\s+("[^"]*"|'[^']*'|[^\s;&|]+)"#)
@@ -107,7 +108,7 @@ public enum CommandGuard {
             let c = s[i]
             if c == "\\" { out.append(c); if i + 1 < n { out.append(s[i + 1]) }; i += 2; continue }
             if c == "'" || c == "\"" {
-                let keep = i >= 3 && text(i - 3, i) == "-c "
+                let keep = i >= 3 && text(i - 3, i) == "-c " && !isRouted(segment: out)
                 var j = i + 1
                 while j < n && s[j] != c { if c == "\"" && s[j] == "\\" { j += 1 }; j += 1 }
                 out += keep ? ";" + text(i + 1, j) : String([c, c])
@@ -138,6 +139,14 @@ public enum CommandGuard {
             i += 1
         }
         return out
+    }
+
+    /// Whether the command segment being built (the text after the last separator) starts under `rmj run`, `rx` or
+    /// `RX_LOCAL=1`: a `-c` payload there is part of the routed command, not a second one.
+    private static func isRouted(segment out: String) -> Bool {
+        let start = out.lastIndex(where: { ";&|\n".contains($0) }).map { out.index(after: $0) } ?? out.startIndex
+        let segment = String(out[start...])
+        return matches(Self.routedStart, segment)
     }
 
     private static func heredocTag(_ s: [Character], at i: Int) -> (name: String, length: Int, stripsTabs: Bool)? {
