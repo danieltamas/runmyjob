@@ -1,5 +1,13 @@
 # LOG
 
+## 0.17.3 (2026-11-27)
+
+- RMJ no longer sits at the top of Activity Monitor's energy list. It polled every repo of every org named in a tenant's `owners` (894 repos here), one `gh` call each at least every 5 minutes: about 100 `gh` processes a minute. It now watches only repos that can run on your boxes: the repos and globs you list, the repos your runners are set up for, repos that ran self-hosted jobs in the last 30 days, and any repo a box's runner is seen working for. After the update: 2 `gh` processes in 2 minutes, RMJ about 3.5% CPU.
+- Boxes report their own jobs. Once a minute the box stream looks for a new GitHub runner job and reads its repo and run id from the runner's log (one `docker exec` per new job), so a job in a repo RMJ did not know about shows up within a minute and is polled at once. A reported repo is kept only if that box's runners are set up for it or its org.
+- Changed: `owners` only decides which tenant a repo belongs to. GitHub-hosted jobs in org repos that never used your runners no longer appear in the panel; list a repo in `repos` to keep watching it. A queued job in an org repo that has never used a runner stays unseen until a runner takes it.
+- The box stream starts far fewer processes on the box, so a host that audits every command (auditd) logs about 40 records a minute instead of about 205 (measured on one box).
+- The command guard no longer blocks `rmj run -- bash -c "..."`: a `-c` payload already under `rmj run`, `rx` or `RX_LOCAL=1` counts as routed.
+
 ## 0.17.2 (2026-11-08)
 
 - Settings > About no longer says "built from source" for a release you installed. Every release carries its own tag in the app bundle, and About added "built from source" whenever any tag was there, so every install since 0.1.0 looked like a local build. It now shows just the version (`v0.17.2`); a build from a checkout still says `v0.17.2 + 2 commits (abc1234), built from source`, and one with uncommitted changes says so. Update checks were never affected.
