@@ -42,10 +42,10 @@ extension DestinationProbe {
     /// backslash or `@` never reaches the frame) and the line stays a claim (`RunnerJobSighting`). Runs in the loop's own
     /// shell: a worker read joins `$rw`; one that printed nothing is tried once more on the next heavy turn (`$tw`), then
     /// given up, so a job costs at most two reads. Sightings collect in `$out`.
-    static let runnerWorkerRead = #"out=; ntw=; m=0; for p in $nw; do [ $m -lt 2 ] || break; m=$((m+1)); cid=; while read -r l; do case $l in (*docker-*.scope) l=${l##*docker-}; cid=${l%.scope};; "#
+    static let runnerWorkerRead = #"out=; ntw=; m=0; for p in $nw; do [ $m -eq 2 ] && break; m=$((m+1)); cid=; while read -r l; do case $l in (*docker-*.scope) l=${l##*docker-}; cid=${l%.scope};; "#
         + #"(*/docker/*) cid=${l##*/docker/};; esac; done < "/proc/$p/cgroup"; r=; case $cid in (''|*[!0-9a-f]*) ;; (*) "#
         + #"r=$(timeout 8 docker exec "$cid" sh -c 'cd /home/runner 2>/dev/null; f=; for x in _diag/Worker_*.log; do f=$x; done; [ -f "$f" ] || exit 0; "#
-        + #"head -c 1048576 "$f" | { n=0; k=; r=; id=; while [ $n -lt 4000 ] && IFS= read -r l; do n=$((n+1)); case $l in (*\"k\":\ \"repository\"*) k=r;; "#
+        + #"head -c 1048576 "$f" | { n=0; k=; r=; id=; while [ $n -ne 4000 ] && IFS= read -r l; do n=$((n+1)); case $l in (*\"k\":\ \"repository\"*) k=r;; "#
         + #"(*\"k\":\ \"run_id\"*) k=i;; (*\"v\":\ \"*) v=${l#*\"v\":\ \"}; v=${v%%\"*}; case $k in (r) r=$v;; (i) id=$v;; esac; k=;; "#
         + #"(*) k=;; esac; [ -n "$r" ] && [ -n "$id" ] && break; done; case $r in (*/*/*|*[!A-Za-z0-9._/-]*|/*|*/) r=;; esac; "#
         + #"case $id in (*[!0-9]*) id=;; esac; [ -n "$r" ] && [ -n "$id" ] && printf "%s %s\n" "$r" "$id"; }');; esac; "#
