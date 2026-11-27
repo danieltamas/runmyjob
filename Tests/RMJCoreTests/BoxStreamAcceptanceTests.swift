@@ -312,7 +312,7 @@ struct BoxStreamAcceptanceTests {
         let rare = Set(DestinationProbe.rareSections)
         #expect(light == Set(["clock", "mem", "memtotal", "load", "boot", "uptime", "cpustat", "swap",
                               "net", "psi", "hwmon", "disk", "clockend"]))
-        #expect(heavy == Set(["docker", "containers"]))
+        #expect(heavy == Set(["docker", "containers", "runnerjobs"]))
         #expect(rare == Set(["rsync", "images", "nproc", "diskhealth", "osname", "virt", "tools"]))
         #expect(light.isDisjoint(with: heavy) && light.isDisjoint(with: rare) && heavy.isDisjoint(with: rare))
         let steps = DestinationProbe.streamSteps(requires: ["git"], images: ["swift:6"])

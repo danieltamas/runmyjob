@@ -502,3 +502,13 @@ Optional log streaming, the Run report window, and no Open log button on a queue
 - Measured on s1 (own ssh session, counted by audit session id): 10 min 100 records, then 70 after trimming (old: about 2400). One minute old vs new: 205 vs 40, 30 frames and the same sections each. 291/291 frames parse with the app's parser.
 - Open: 70 > 50. Remaining: docker ps + stats every 60 s (20), smartctl 8, plugin loads 4, tools 4.
 - Not run: swift test / check.sh (release only). The acceptance tests for the script text were read, not run.
+
+## 2026-11-27 - GitHub watch list starts from the boxes, not from tenant owners (unreleased)
+
+- Problem: `watchedRepos()` listed every repo of each tenant `owners` org (Gamerina 796, Digitapeu 83, danieltamas 15) and polled all 894, one x86_64 `gh` under Rosetta per call: 51 `gh` processes in 30 s, RMJ near the top of Activity Monitor's energy list. Only kazu had self-hosted jobs in the last 30 days.
+- Change: watched = explicit repos and globs, repo-scoped `runner_targets`, repos with self-hosted `gh-` jobs in 30 days, and repos a box's runner was seen working for. The box stream's heavy tier gains `runnerjobs`: new `Runner.Worker` pids from `/proc` with builtins, then up to two `timeout 8 docker exec` per turn reading `<repo> <run id>` from `_diag/Worker_*.log` (1 MB / 4000 lines, validated in the container, printf). The poller keeps a sighting only when that destination's `runner_targets` name the repo or its org (100 at most, dropped on a 404); a new run is polled at once.
+- Box check (host-gamerina, dash): the generated snippet read `danieltamas/kazu 46020620866`, the ledger's running job; runners without a worker log went to one retry.
+- Measured after `install-from-source.sh`, 5 min after launch, 2 min sample: 2 `gh` processes (was about 100 a minute); RMJ 3.5% CPU in a 5 s `top` sample.
+- s1 audit: container processes have no login auid, so the rule logs only `timeout` + `docker` on the host: 0 records per turn without a new job, 2 per job (estimated, not counted live).
+- Review: Codex, 2 rounds, `docs/reviews/watch-from-boxes-2026-11-27.md`; all P1/P2 fixed except the accepted limit: an org repo that never used a runner is not seen until a runner picks its first job.
+- Acceptance tests by Codex (hashed): GitHubPollerAcceptanceTests (watch list), BoxStreamAcceptanceTests (heavy tier), new RunnerJobSightingAcceptanceTests. Not run: release only.

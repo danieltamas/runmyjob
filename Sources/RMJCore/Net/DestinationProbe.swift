@@ -32,6 +32,23 @@ public struct ContainerSample: Sendable, Equatable {
     public let memory: String
 }
 
+/// A job a runner container said it picked up, read from that runner's own log. Workflow steps can write that log, so it is a
+/// claim: it only adds a repo to the GitHub watch list (`GitHubPoller.noteBoxRepos`), and what lands in the ledger comes from GitHub.
+public struct RunnerJobSighting: Sendable, Equatable {
+    public let repo: String
+    public let runID: Int64
+
+    /// `<owner>/<name> <run id>`; anything else is dropped.
+    init?(line: String) {
+        let parts = line.split(separator: " ")
+        guard parts.count == 2, let runID = Int64(parts[1]), runID > 0 else { return nil }
+        let repo = String(parts[0])
+        guard !repo.hasPrefix("org:"), RunnerTarget.path(repo) != nil else { return nil }
+        self.repo = repo
+        self.runID = runID
+    }
+}
+
 public struct DestinationProbeResult: Sendable, Equatable {
     public let availability: Availability
     public let docker: Reading<String>
@@ -55,6 +72,8 @@ public struct DestinationProbeResult: Sendable, Equatable {
     public var sensors: SensorSnapshot?
     /// What the images used here lack, per image; nil when there was nothing to look for or the box did not report.
     public var missingTools: [MissingTools]?
+    /// Jobs the box's runners started since the stream's previous heavy turn; nil when the box did not report.
+    public var runnerJobs: [RunnerJobSighting]?
 
     public var dockerReady: Bool { docker.value != nil }
     public var rsyncReady: Bool { rsync.value != nil }
@@ -145,6 +164,7 @@ public struct DestinationProbe: Sendable {
         ("hwmon", "for f in /sys/class/hwmon/hwmon*/temp*_input /sys/class/thermal/thermal_zone*/temp; do [ -r \"$f\" ] && echo \"temp $(cat \"$f\" 2>/dev/null)\"; done; "
             + "for f in /sys/class/hwmon/hwmon*/fan*_input; do [ -r \"$f\" ] && echo \"fan $(cat \"$f\" 2>/dev/null)\"; done; true"),
         ("clockend", "date +%s%N"),
+        ("runnerjobs", "nl='\n'; rw=; tw=; " + runnerWorkerScan + "; " + runnerWorkerRead + "; printf '%s' \"$out\""),
     ]
 
     /// Each step reports its own exit status in its header, its output is capped, and `@@end`
@@ -254,6 +274,10 @@ public struct DestinationProbe: Sendable {
             load: number("load"), bootID: reading("boot").value, uptime: number("uptime"), clockOffsetMS: clock, probedAt: now)
         result.missingTools = missing
         result.sensors = SensorSnapshot.read(sections)
+        // A sighting line that cleaning would change was tampered with: it is dropped, never repaired into a valid one.
+        if let section = sections["runnerjobs"], section.rc == 0 {
+            result.runnerJobs = section.lines.filter { UntrustedText.clean($0) == $0 }.compactMap(RunnerJobSighting.init(line:))
+        }
         return result
     }
 

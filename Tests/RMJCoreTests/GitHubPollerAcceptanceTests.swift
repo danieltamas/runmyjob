@@ -199,25 +199,137 @@ struct GitHubPollerAcceptanceTests {
         #expect(try await f.ledger.jobs().count == 2)
     }
 
-    @Test func watchedReposExpandOwnersAndGlobsWithHourlyCache() async throws {
+    @Test func tenantOwnersAloneDoNotWatchOrListRepos() async throws {
         let f = try U5Fixture(); defer { f.remove() }
-        let json = #"{"destinations":{},"tenants":{"acme":{"owners":["acme"],"repos":["acme/atlas","acme/ledger"]},"personal":{"repos":["acme/axon","globex/portal*"]}},"rules":[]}"#
-        let rules = try JSONDecoder().decode(Rules.self, from: Data(json.utf8))
+        let rules = Rules(tenants: ["acme": TenantConfig(owners: ["acme"])])
         let poller = f.poller(rules: rules)
-        let acme = (1...101).map { "acme/repo\($0)" }
-        await f.api.owner("orgs", "acme", repos: acme)
-        await f.api.owner("users", "globex", repos: ["globex/portal.ro", "globex/portal-sdk", "acme/unmatched", "acme/axon"])
-        let expected = (acme + ["acme/atlas", "acme/ledger", "acme/axon", "globex/portal.ro", "globex/portal-sdk"]).sorted()
-        #expect(try await poller.watchedRepos() == expected)
-        let first = await f.api.recorded()
-        #expect(first.filter { $0.path == "/orgs/acme/repos" }.map { $0.query["page"] } == ["1", "2"])
-        #expect(first.contains { $0.path == "/orgs/acme/repos" })
-        #expect(first.contains { $0.path == "/users/globex/repos" })
-        #expect(try await poller.watchedRepos() == expected)
-        #expect(await f.api.recorded().count == first.count)
+        await f.api.owner("orgs", "acme", repos: ["acme/unrequested"])
+        await f.api.owner("users", "acme", repos: ["acme/unrequested"])
+        #expect(try await poller.watchedRepos().isEmpty)
         f.clock.advance(3601)
-        #expect(try await poller.watchedRepos() == expected)
-        #expect(await f.api.recorded().count == first.count * 2)
+        #expect(try await poller.watchedRepos().isEmpty)
+        #expect(await f.api.recorded().isEmpty)
+    }
+
+    @Test func explicitReposAndMatchingGlobsUsePaginatedHourlyOwnerCache() async throws {
+        let f = try U5Fixture(); defer { f.remove() }
+        let rules = Rules(tenants: [
+            "acme": TenantConfig(owners: ["acme"], repos: ["acme/atlas", "acme/ledger"]),
+            "personal": TenantConfig(repos: ["globex/portal*", "globex/sdk*", "solo/tool*"])
+        ])
+        let poller = f.poller(rules: rules)
+        // A match after page one proves the listing follows pagination; nonmatches stay unwatched.
+        let globex = (1...100).map { "globex/unmatched\($0)" } + ["globex/portal.ro", "globex/sdk"]
+        await f.api.owner("orgs", "acme", repos: ["acme/unrequested"])
+        await f.api.owner("orgs", "globex", repos: globex)
+        await f.api.owner("users", "solo", repos: ["solo/toolbox", "solo/unmatched"])
+        let expected = Set(["acme/atlas", "acme/ledger", "globex/portal.ro", "globex/sdk", "solo/toolbox"])
+        #expect(Set(try await poller.watchedRepos()) == expected)
+        let first = await f.api.recorded()
+        #expect(!first.contains { $0.path == "/orgs/acme/repos" || $0.path == "/users/acme/repos" })
+        #expect(first.filter { $0.path == "/orgs/globex/repos" }.map { $0.query["page"] } == ["1", "2"])
+        #expect(first.filter { $0.path == "/users/solo/repos" }.map { $0.query["page"] } == ["1"])
+        #expect(first.allSatisfy { $0.query["per_page"] == "100" })
+        #expect(Set(try await poller.watchedRepos()) == expected)
+        #expect(await f.api.recorded().count == first.count)
+        await f.api.owner("orgs", "globex", repos: globex + ["globex/portal-new"])
+        f.clock.advance(3599)
+        #expect(Set(try await poller.watchedRepos()) == expected)
+        #expect(await f.api.recorded().count == first.count)
+        f.clock.advance(1)
+        #expect(Set(try await poller.watchedRepos()) == expected.union(["globex/portal-new"]))
+        let refreshed = await f.api.recorded()
+        #expect(refreshed.filter { $0.path == "/orgs/globex/repos" }.map { $0.query["page"] } == ["1", "2", "1", "2"])
+        #expect(refreshed.filter { $0.path == "/users/solo/repos" }.count == 2)
+        #expect(!refreshed.contains { $0.path == "/orgs/acme/repos" || $0.path == "/users/acme/repos" })
+    }
+
+    @Test func repoRunnerTargetsAreWatchedButOrgTargetsDoNotExpand() async throws {
+        let f = try U5Fixture(); defer { f.remove() }
+        var rules = try watchRules(targets: ["org:acme", "globex/portal"])
+        rules.destinations["other"] = rules.destinations["box"]
+        rules.destinations["other"]?.runnerTargets = ["solo/tool"]
+        await f.api.owner("orgs", "acme", repos: ["acme/unrequested"])
+        let repos = try await f.poller(rules: rules).watchedRepos()
+        #expect(Set(repos) == Set(["globex/portal", "solo/tool"]))
+        #expect(await f.api.recorded().isEmpty)
+    }
+
+    @Test func onlyRecentSelfHostedGitHubLedgerJobsKeepReposWatched() async throws {
+        let f = try U5Fixture(); defer { f.remove() }
+        let poller = f.poller(rules: Rules())
+        let cases: [(String, String, String, TimeInterval)] = [
+            ("gh-101-1", "acme/recent", "box", 30 * 86400 - 1),
+            ("gh-102-1", "acme/hosted", "github-hosted", 0),
+            ("gh-103-1", "acme/old", "box", 30 * 86400 + 1),
+            ("local-104", "acme/local", "box", 0),
+            ("gh-105-1", "acme/mixed", "box", 60),
+            ("gh-106-1", "acme/mixed", "github-hosted", 0)
+        ]
+        for (id, repo, location, age) in cases {
+            try await f.ledger.insert(JobRecord(id: id, repo: repo, command: "CI", location: location,
+                state: .done, queuedAt: f.clock.now().addingTimeInterval(-age)))
+        }
+        #expect(Set(try await poller.watchedRepos()) == Set(["acme/recent", "acme/mixed"]))
+        f.clock.advance(2)
+        #expect(try await poller.watchedRepos() == ["acme/mixed"])
+        #expect(await f.api.recorded().isEmpty)
+    }
+
+    @Test func boxReposRequireThatDestinationsRepoOrOrgTarget() async throws {
+        let f = try U5Fixture(); defer { f.remove() }
+        var rules = try watchRules(targets: ["OrG:AcMe", "GLOBEX/Portal"])
+        rules.destinations["other"] = rules.destinations["box"]
+        rules.destinations["other"]?.runnerTargets = ["org:outsider"]
+        let poller = f.poller(rules: rules)
+        #expect(await poller.noteBoxRepos(["aCmE/Atlas"], destination: "box"))
+        #expect(await poller.noteBoxRepos(["globex/PORTAL"], destination: "box"))
+        #expect(await poller.noteBoxRepos(["ACME/atlas", "Globex/portal"], destination: "box") == false)
+        for rejected in ["outsider/repo", "globex/other", "org:acme", "acme/a/b", "../x", "acme/", "invalid"] {
+            #expect(await poller.noteBoxRepos([rejected], destination: "box") == false, "Rejected: \(rejected)")
+        }
+        #expect(await poller.noteBoxRepos(["acme/unknown-box"], destination: "missing") == false)
+        let repos = try await poller.watchedRepos()
+        #expect(repos.count == 2)
+        #expect(Set(repos.map { $0.lowercased() }) == Set(["acme/atlas", "globex/portal"]))
+        #expect(try await f.ledger.jobs().isEmpty)
+        #expect(await f.api.recorded().isEmpty)
+    }
+
+    @Test func boxReposExpireThirtyDaysAfterTheirLastSighting() async throws {
+        let f = try U5Fixture(); defer { f.remove() }
+        let poller = f.poller(rules: try watchRules(targets: ["org:acme"]))
+        #expect(await poller.noteBoxRepos(["acme/atlas", "acme/once"], destination: "box"))
+        f.clock.advance(20 * 86400)
+        #expect(await poller.noteBoxRepos(["ACME/ATLAS"], destination: "box") == false)
+        f.clock.advance(10 * 86400)
+        #expect(try await poller.watchedRepos().map { $0.lowercased() } == ["acme/atlas"])
+        f.clock.advance(20 * 86400 - 1)
+        #expect(try await poller.watchedRepos().map { $0.lowercased() } == ["acme/atlas"])
+        f.clock.advance(1)
+        #expect(try await poller.watchedRepos().isEmpty)
+    }
+
+    @Test func watchedReposDeduplicateCaseAcrossEverySource() async throws {
+        let f = try U5Fixture(); defer { f.remove() }
+        var rules = try watchRules(targets: ["ACME/Atlas", "org:acme"])
+        rules.tenants = ["acme": TenantConfig(repos: ["Acme/ATLAS", "acme/atlas", "acme/at*"])]
+        await f.api.owner("orgs", "acme", repos: ["aCmE/aTlAs"])
+        try await f.ledger.insert(JobRecord(id: "gh-107-1", repo: "acme/ATlas", command: "CI",
+            location: "box", state: .done, queuedAt: f.clock.now()))
+        let poller = f.poller(rules: rules)
+        #expect(await poller.noteBoxRepos(["ACME/ATLAS"], destination: "box"))
+        #expect(await poller.noteBoxRepos(["acme/atlas"], destination: "box") == false)
+        let repos = try await poller.watchedRepos()
+        #expect(repos.count == 1)
+        #expect(repos.map { $0.lowercased() } == ["acme/atlas"])
+    }
+
+    private func watchRules(targets: [String]) throws -> Rules {
+        let json = #"{"destinations":{"box":{"enabled":true,"peer_id":"peer","ssh_alias":"box","tenant":"acme","roles":["github"],"home":"/home/runner","max_jobs":2,"memory_budget":"4g"}},"tenants":{},"rules":[]}"#
+        var rules = try JSONDecoder().decode(Rules.self, from: Data(json.utf8))
+        rules.destinations["box"]?.runnerTargets = targets
+        return rules
     }
 
     @Test func untrustedNamesAreCleanedBeforeLedgerStorage() async throws {

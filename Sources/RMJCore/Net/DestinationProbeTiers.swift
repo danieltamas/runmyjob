@@ -30,6 +30,28 @@ extension DestinationProbe {
 
     static func streamCommand(_ name: String, default command: String) -> String { streamCommands[name] ?? command }
 
+    /// The `Runner.Worker` processes on the box, found with shell builtins only: the pids not in `$rw` (the workers already read)
+    /// go to `$nw`, and `$rw` keeps only the ones still running. A worker is one job; it lives as long as the job.
+    static let runnerWorkerScan = #"nw=; kw=; for p in /proc/[0-9]*; do read -r c < "$p/comm" || continue; [ "$c" = Runner.Worker ] || continue; "#
+        + #"p=${p#/proc/}; case "$rw" in (*" $p "*) kw="$kw $p ";; (*) nw="$nw $p";; esac; done 2>/dev/null; rw=$kw"#
+
+    /// For up to two workers in `$nw` (the rest wait for the next heavy turn, so a turn stays well inside the stream's silence
+    /// limit): the container from the cgroup file, then one `docker exec` (8 s at most) that prints `<owner/name> <run id>` from
+    /// the newest `_diag/Worker_*.log`: the job message sits near line 1000, and the read stops at 1 MB or 4000 lines. Workflow
+    /// steps can write that log, so both fields are checked in the container before `printf` prints them (a name with a
+    /// backslash or `@` never reaches the frame) and the line stays a claim (`RunnerJobSighting`). Runs in the loop's own
+    /// shell: a worker read joins `$rw`; one that printed nothing is tried once more on the next heavy turn (`$tw`), then
+    /// given up, so a job costs at most two reads. Sightings collect in `$out`.
+    static let runnerWorkerRead = #"out=; ntw=; m=0; for p in $nw; do [ $m -lt 2 ] || break; m=$((m+1)); cid=; while read -r l; do case $l in (*docker-*.scope) l=${l##*docker-}; cid=${l%.scope};; "#
+        + #"(*/docker/*) cid=${l##*/docker/};; esac; done < "/proc/$p/cgroup"; r=; case $cid in (''|*[!0-9a-f]*) ;; (*) "#
+        + #"r=$(timeout 8 docker exec "$cid" sh -c 'cd /home/runner 2>/dev/null; f=; for x in _diag/Worker_*.log; do f=$x; done; [ -f "$f" ] || exit 0; "#
+        + #"head -c 1048576 "$f" | { n=0; k=; r=; id=; while [ $n -lt 4000 ] && IFS= read -r l; do n=$((n+1)); case $l in (*\"k\":\ \"repository\"*) k=r;; "#
+        + #"(*\"k\":\ \"run_id\"*) k=i;; (*\"v\":\ \"*) v=${l#*\"v\":\ \"}; v=${v%%\"*}; case $k in (r) r=$v;; (i) id=$v;; esac; k=;; "#
+        + #"(*) k=;; esac; [ -n "$r" ] && [ -n "$id" ] && break; done; case $r in (*/*/*|*[!A-Za-z0-9._/-]*|/*|*/) r=;; esac; "#
+        + #"case $id in (*[!0-9]*) id=;; esac; [ -n "$r" ] && [ -n "$id" ] && printf "%s %s\n" "$r" "$id"; }');; esac; "#
+        + #"if [ -n "$r" ]; then out="$out$r$nl"; rw="$rw $p "; else case "$tw" in (*" $p "*) rw="$rw $p ";; (*) ntw="$ntw $p ";; esac; fi; "#
+        + #"done 2>/dev/null; tw=$ntw"#
+
     /// `$out` capped at `bodyCap`. bash cuts it with a parameter expansion; any other shell pipes it through `head`.
     static var capFunction: String {
         #"cap() { if [ -n "$BASH_VERSION" ]; then eval 'printf "%s\n" "${out:0:\#(bodyCap)}"'; else printf '%s\n' "$out" | head -c \#(bodyCap); fi; }"#
@@ -55,6 +77,9 @@ extension DestinationProbe {
             return #"if [ -n "$dv" ] && [ "$ps_rc" = 0 ] && [ $((i % rare_every)) -ne 0 ]; then rc=0; out=$dv; else \#(run); dv=; [ $rc -eq 0 ] && dv=$out; fi; \#(header)"#
         case "diskhealth":
             return "\(diskList)\(run); \(header)"
+        case "runnerjobs":
+            // Scan and read run in the loop's own shell, so `$rw` and `$tw` outlive the turn: a job costs one `docker exec`, twice at most.
+            return "\(runnerWorkerScan); \(runnerWorkerRead); rc=0; \(header)"
         default:
             return "\(run); \(header)"
         }

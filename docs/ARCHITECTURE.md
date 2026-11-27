@@ -226,6 +226,13 @@ Refusals are announced once; renames are logged to `~/.rmj/logs/renames.log`.
 GitHub job ids are global, so the ledger rows of a renamed repo stay valid: `GitHubPoller.store` adopts a stored `gh-` job
 that is not under the polled name (`Ledger.setRepo`) instead of inserting it again, which would fail on `job.id`.
 
+The watched set starts from the destinations, not from the orgs: the tenants' explicit repos and globs, repo-scoped
+`runner_targets`, repos with a self-hosted job in the ledger in the last 30 days, and repos the box streams saw a runner work
+for. Each stream's heavy tier finds new `Runner.Worker` processes in `/proc` with shell builtins and reads the job's repo and
+run id from that runner's `_diag/Worker_*.log` with one `docker exec` per job. A workflow step can write that log, so the
+sighting is a claim: `GitHubPoller.noteBoxRepos` keeps a repo only when the destination's `runner_targets` name it or its
+org, and only adds it to the poll list; the ledger rows still come from GitHub.
+
 `GitHubPoller` keeps the last error of each failing repo (dropped when the repo polls cleanly or leaves the watched set).
 `AppBackground.footerNote` carries the rate-limit pause or, failing that, `failureNote()`, through `PanelModel` and
 `PanelSnapshot.githubProblem` to the panel footer; a failing poll is never silent.

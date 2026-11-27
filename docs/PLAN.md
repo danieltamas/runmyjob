@@ -349,8 +349,11 @@ Acceptance:
 with a complete ledger row, and `$SCRATCH/review-out.md` prints 0 P0-P2.
 
 ### U5. GitHub side
-- Watched set: every `owner/name` in the rules' `[repo]` table plus every repo of each listed org
-  and owner (listed once an hour, paginated). With `gh auth token` per call (RMJ stores no token;
+- Watched set (revised 2026-11-27): every `owner/name` and glob in the tenants' repo tables (a glob's owner listed once an hour,
+  paginated), every repo-scoped `runner_targets` entry, every repo with a self-hosted job in the ledger in the last 30 days, and
+  every repo a destination's runner was seen working for (the box stream's `runnerjobs` section; kept only when that destination's
+  `runner_targets` name the repo or its org). A tenant's `owners` decides the tenant only; listing every repo of an org polled
+  894 repos, one `gh` process each, about 100 a minute. With `gh auth token` per call (RMJ stores no token;
   the org runner calls use the Keychain PAT read-only), the poller reads workflow runs and jobs
   (paginated, `per_page=100`, back to 30 days on first run and after any downtime gap) with ETags.
   Interval 15 s for repos with something queued or running, 120 s after a run in the last day, 300 s otherwise; the panel's footer
@@ -645,7 +648,9 @@ Interfaces (RMJCore/Net, public unless noted):
   `i=0; while :; do <steps>; echo @@end; i=$((i+1)); sleep <interval>; done`, one frame per turn, the existing step commands and
   `@@name rc=N` section format unchanged. The steps run in three tiers so the stream is cheap on the box: the **light** tier
   (every turn; kernel files only, no docker, no dmesg, no smartctl: clock, mem, memtotal, load, boot, uptime, cpustat, swap, net,
-  psi, hwmon, disk, clockend) and, when `i % heavyEvery == 0`, the **heavy** tier (docker, containers: `docker info`, `docker ps` and `docker stats --no-stream`),
+  psi, hwmon, disk, clockend) and, when `i % heavyEvery == 0`, the **heavy** tier (docker, containers, runnerjobs: `docker info`, `docker ps` and
+  `docker stats --no-stream`; runnerjobs finds new `Runner.Worker` processes with shell builtins and spends one `docker exec` per new one, printing
+  `<owner/name> <run id>` from the runner's `_diag/Worker_*.log`),
   and, when `i % rareEvery == 0`, the **rare** tier (rsync, images, nproc, diskhealth, osname, virt, tools). Turn 0 runs all three, so the
   first frame is complete. Defaults: interval 10 s, heavyEvery 6 (60 s), rareEvery 30 (5 min). A box whose `sleep` is missing, or whose shell exits,
   ends the session (exit status reported). The box-side loop dies with the session: when ssh goes away the next write to the closed pipe ends it.

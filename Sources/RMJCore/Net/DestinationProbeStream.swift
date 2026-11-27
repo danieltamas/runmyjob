@@ -19,7 +19,7 @@ struct ParsedSections {
 /// the heavy tier talks to docker, the rare tier runs the slow checks. Every turn runs the light tier.
 extension DestinationProbe {
     public static let lightSections = ["clock", "mem", "memtotal", "load", "boot", "uptime", "cpustat", "swap", "net", "psi", "hwmon", "disk", "clockend"]
-    public static let heavySections = ["docker", "containers"]
+    public static let heavySections = ["docker", "containers", "runnerjobs"]
     public static let rareSections = ["rsync", "images", "nproc", "diskhealth", "osname", "virt", "tools"]
 
     /// Variables used by the light snippets: out, rc, k, v, t, f, r, n, rx, tx, ifc, nl, dk. They read `i`, the turn counter,
@@ -109,6 +109,7 @@ extension DestinationProbeResult {
                                           clockOffsetMS: clockOffsetMS, probedAt: other.probedAt)
         copy.sensors = sensors
         copy.missingTools = missingTools
+        copy.runnerJobs = runnerJobs
         return copy == other
     }
 }

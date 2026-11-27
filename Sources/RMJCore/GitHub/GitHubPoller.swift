@@ -19,6 +19,7 @@ public actor GitHubPoller {
     /// How long after a run's last update GitHub's job list is still allowed to disagree with the run.
     static let settleWindow: TimeInterval = 3600
     static let ownerListingTTL: TimeInterval = 3600
+    static let boxRepoLimit = 100
 
     private let api: GitHubAPI
     private let ledger: Ledger
@@ -31,6 +32,8 @@ public actor GitHubPoller {
     private var tableReady = false
     private var rateLimitedUntilStored: Date?
     private var ownerRepos = [String: (at: Date, repos: [String])]()
+    /// Lowercased name -> the name as the box gave it and when it was last seen.
+    private var boxRepos = [String: (name: String, at: Date)]()
 
     public init(api: GitHubAPI, ledger: Ledger, rules: Rules, orgToken: @escaping @Sendable (String) -> String? = { _ in nil },
                 now: @escaping @Sendable () -> Date = Date.init) {
@@ -81,29 +84,56 @@ public actor GitHubPoller {
 
     // MARK: Watched set
 
-    /// Every explicit `owner/name` of the tenants' repo tables plus every repo of each listed owner and of the
-    /// owner of a glob entry (matching it), listed at most once an hour.
+    /// The repos whose jobs can reach a destination's runners: the explicit `owner/name` and glob entries of the tenants' repo
+    /// tables (a glob's owner listed at most once an hour), every repo-scoped `runner_targets` entry, every repo with a
+    /// self-hosted job in the ledger in the last 30 days, and every repo a box's runner was seen working for in that time.
+    /// A tenant's `owners` only says which tenant a repo belongs to: listing every repo of an org polled hundreds of repos
+    /// that never run on a destination, one `gh` process each.
     public func watchedRepos() async throws -> [String] {
-        var repos = Set<String>()
-        var owners = Set<String>()
+        var repos = [String: String]()
+        func add(_ name: String) { repos[name.lowercased()] = repos[name.lowercased()] ?? name }
         var globs = [String]()
         for tenant in rules.tenants.values {
             for entry in tenant.repos ?? [] {
-                if entry.contains("*") { globs.append(entry.lowercased()) } else { repos.insert(entry) }
-                if entry.contains("*"), let owner = entry.split(separator: "/").first { owners.insert(String(owner)) }
+                if entry.contains("*") { globs.append(entry.lowercased()) } else { add(entry) }
             }
         }
-        for tenant in rules.tenants.values { owners.formUnion(tenant.owners ?? []) }
-        let listedOwners = Set(rules.tenants.values.flatMap { $0.owners ?? [] })
-        for owner in owners.sorted() {
+        for target in rules.destinations.values.flatMap({ $0.runnerTargets ?? [] }) where !target.hasPrefix("org:") && RunnerTarget.path(target) != nil {
+            add(target)
+        }
+        let since = Int64((now().timeIntervalSince1970 - Self.backfillWindow) * 1000)
+        let ran = try await ledger.database.query(
+            "SELECT DISTINCT repo FROM job WHERE id LIKE 'gh-%' AND location <> 'github-hosted' AND queued_at > ?", [.int(since)])
+        for row in ran { if let name = row["repo"]?.textValue { add(name) } }
+        boxRepos = boxRepos.filter { now().timeIntervalSince($0.value.at) < Self.backfillWindow }
+        for seen in boxRepos.values { add(seen.name) }
+        let globOwners = Set(globs.compactMap { $0.split(separator: "/").first.map(String.init) })
+        for owner in globOwners.sorted() {
             guard let listed = try await reposOf(owner: owner) else { continue }
-            for name in listed {
-                let lower = name.lowercased()
-                if listedOwners.contains(owner) || globs.contains(where: { Glob.matches($0, lower) }) { repos.insert(name) }
-            }
+            for name in listed where globs.contains(where: { Glob.matches($0, name.lowercased()) }) { add(name) }
         }
-        failures = failures.filter { repos.contains($0.key) }
-        return repos.sorted()
+        failures = failures.filter { repos[$0.key.lowercased()] == $0.key }
+        return repos.values.sorted()
+    }
+
+    /// Repos a destination's runners were seen working for (`RunnerJobSighting`). The box's word is a claim: a repo is kept
+    /// only when that destination's `runner_targets` name it or its owner's org, so a workflow cannot point polling elsewhere.
+    /// True when a repo was not seen before, so the caller refreshes the watch list.
+    @discardableResult
+    public func noteBoxRepos(_ seen: [String], destination: String) -> Bool {
+        let targets = Set((rules.destinations[destination]?.runnerTargets ?? []).map { $0.lowercased() })
+        var added = false
+        for repo in seen where !repo.hasPrefix("org:") && RunnerTarget.path(repo) != nil {
+            let lower = repo.lowercased()
+            guard let owner = lower.split(separator: "/").first, targets.contains(lower) || targets.contains("org:\(owner)") else { continue }
+            // A workflow can name any repo of its org: the claims a box can add are bounded, and `poll` drops one GitHub rejects.
+            if boxRepos[lower] == nil {
+                guard boxRepos.count < Self.boxRepoLimit else { continue }
+                added = true
+            }
+            boxRepos[lower] = (repo, now())
+        }
+        return added
     }
 
     private func reposOf(owner: String) async throws -> [String]? {
@@ -226,7 +256,12 @@ public actor GitHubPoller {
             let response = try await fetch("/repos/\(repo)/actions/runs", query: ["per_page": "100", "page": String(page), "created": created],
                                             etag: page == 1 ? etag : nil, token: nil)
             if response.status == 304 { return Listing(fetched: [], etag: etag) }
-            guard response.status == 200 else { throw GHCLI.Failure(message: "GitHub answered \(response.status) listing runs of \(repo)") }
+            guard response.status == 200 else {
+                // A box's sighting is only a claim: a repo GitHub does not know stops being polled until a runner is seen on it again.
+                // Any other failure is retried.
+                if response.status == 404 { boxRepos[repo.lowercased()] = nil }
+                throw GHCLI.Failure(message: "GitHub answered \(response.status) listing runs of \(repo)")
+            }
             if page == 1 { firstETag = response.etag }
             let runs = try GitHubJSON.decoder.decode(GitHubJSON.Runs.self, from: response.body).workflowRuns
             fetched += runs

@@ -285,6 +285,7 @@ final class PanelModel: ObservableObject {
         probes = probes.filter { latest[$0.key] != nil }
         for (name, result) in latest {
             probes[name] = result
+            if let sightings = result.runnerJobs { await background.noteRunnerJobs(sightings, destination: name) }
             // A box that is not answering has no new counters to compare.
             if result.availability.isAvailable, (histories[name]?.last).map({ result.probedAt.timeIntervalSince($0.probedAt) >= Self.historyStep }) ?? true {
                 histories[name] = Array(((histories[name] ?? []) + [result]).suffix(SensorChips.historyLimit))

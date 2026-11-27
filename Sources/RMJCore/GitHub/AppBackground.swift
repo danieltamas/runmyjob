@@ -27,6 +27,19 @@ public actor AppBackground {
 
     public func setAnnouncer(_ announce: @escaping @Sendable (String, String) -> Void) { self.announce = announce }
 
+    /// Repos a box's runners were seen working for, per destination, waiting for the next round to hand them to the poller.
+    private var boxReports = [String: Set<String>]()
+    /// Runs already reported: a stream replays its last heavy section until the next heavy turn, so one sighting arrives many times.
+    private var reportedRuns = Set<Int64>()
+
+    /// What the box streams saw the runners pick up (`DestinationProbeResult.runnerJobs`). Only a run not reported before counts.
+    public func noteRunnerJobs(_ sightings: [RunnerJobSighting], destination: String) {
+        if reportedRuns.count > 1000 { reportedRuns = [] }
+        let fresh = sightings.filter { reportedRuns.insert($0.runID).inserted }
+        guard !fresh.isEmpty else { return }
+        boxReports[destination, default: []].formUnion(fresh.map(\.repo))
+    }
+
     /// Runs until the task is cancelled. A failure in one round is skipped; the next round tries again.
     public func run() async {
         guard let context = try? await RunCommand.open(environment: environment) else { return }
@@ -53,11 +66,24 @@ public actor AppBackground {
                     poller = GitHubPoller(api: GHCLI(), ledger: context.ledger, rules: rules, orgToken: read)
                 }
                 if let poller {
+                    // A repo a runner just started a job for is polled now, not at the next minute's refresh.
+                    let reports = boxReports
+                    boxReports = [:]
+                    var urgent = Set<String>()
+                    for (destination, seen) in reports {
+                        if await poller.noteBoxRepos(Array(seen), destination: destination) { reposAt = .distantPast }
+                        urgent.formUnion(seen.map { $0.lowercased() })
+                    }
                     if Date().timeIntervalSince(reposAt) > 60 { repos = (try? await poller.watchedRepos()) ?? repos; reposAt = Date() }
                     // One poll takes about a second and hundreds of quiet repos are due, so a sweep in list order kept a repo with a
                     // running job waiting for minutes. Each step polls the most urgent due repo: the shortest interval first (queued or
                     // running, then a run in the last day, then quiet), the longest overdue among equals. A slice of 20 s at most, so
                     // the rest of the round (archiving, scaling, the footer) is not held up behind the sweep.
+                    // A run a box just started is polled now, at the active interval, whatever the repo's last period was.
+                    for name in repos where urgent.contains(name.lowercased()) {
+                        due[name] = .distantPast
+                        period[name] = GitHubPoller.activeInterval
+                    }
                     for name in repos where period[name] == nil { period[name] = (try? await poller.interval(for: name)) ?? GitHubPoller.quietInterval }
                     let slice = Date()
                     while Date().timeIntervalSince(slice) < 20,
